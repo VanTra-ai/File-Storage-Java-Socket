@@ -1,0 +1,18 @@
+# Compiled class files & build artifacts
+*.class
+*.jar
+*.war
+*.ear
+/dist/
+/build/
+
+# IDE specific files (NetBeans, IntelliJ, Eclipse)
+.idea/
+*.iml
+*/nbproject/
+*/.settings/
+*/bin/
+
+# Log files and local data
+*.log
+log/
