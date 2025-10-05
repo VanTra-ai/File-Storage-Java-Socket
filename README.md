@@ -91,8 +91,8 @@ Do dự án sử dụng các thư viện ngoài (external JARs), bạn cần th�
         `file_path` varchar(250) NOT NULL,
         `mime_type` varchar(50) DEFAULT NULL,
         `file_size` bigint(20) NOT NULL,
-        `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP, -- Đã được xác nhận qua hình ảnh
-        `last_modified` datetime DEFAULT CURRENT_TIMESTAMP, -- Đã được xác nhận qua hình ảnh
+        `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        `last_modified` datetime DEFAULT CURRENT_TIMESTAMP,
         `is_shared` tinyint(1) DEFAULT '0',
         `share_token` varchar(36) DEFAULT NULL,
         `share_expiry` datetime DEFAULT NULL,
