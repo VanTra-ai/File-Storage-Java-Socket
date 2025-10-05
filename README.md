@@ -64,14 +64,13 @@ Do dự án sử dụng các thư viện ngoài (external JARs), bạn cần th�
 
     ```sql
     -- Kiểm tra và xóa Database cũ nếu tồn tại
-   -- DROP DATABASE IF EXISTS file_storage_db;
-   
-   -- Tạo Database mới
-   -- CREATE DATABASE file_storage_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-   -- USE file_storage_db;
-   
-   -- Bảng users
-   CREATE TABLE `users` (
+      -- DROP DATABASE IF EXISTS file_storage_db;
+      
+      -- Tạo Database mới
+      -- CREATE DATABASE file_storage_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+      -- USE file_storage_db;
+      
+      CREATE TABLE `users` (
      `user_id` int(11) NOT NULL AUTO_INCREMENT,
      `username` varchar(50) NOT NULL UNIQUE,
      `password_hash` varchar(255) NOT NULL,
@@ -80,26 +79,26 @@ Do dự án sử dụng các thư viện ngoài (external JARs), bạn cần th�
      `status` tinyint(4) DEFAULT '1',
      `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
      `is_active` tinyint(4) DEFAULT '1',
-     `last_login` datetime datetime DEFAULT CURRENT_TIMESTAMP, -- Đã được xác nhận qua hình ảnh
+     `last_login` datetime DEFAULT CURRENT_TIMESTAMP, -- ĐÃ SỬA
      PRIMARY KEY (`user_id`)
-   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-   
-   -- Bảng files
-   CREATE TABLE `files` (
-     `file_id` int(11) NOT NULL AUTO_INCREMENT,
-     `owner_id` int(11) NOT NULL,
-     `file_name` varchar(255) NOT NULL,
-     `file_path` varchar(250) NOT NULL,
-     `mime_type` varchar(50) DEFAULT NULL,
-     `file_size` bigint(20) NOT NULL,
-     `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP, -- Đã được xác nhận qua hình ảnh
-     `last_modified` datetime DEFAULT CURRENT_TIMESTAMP, -- Đã được xác nhận qua hình ảnh
-     `is_shared` tinyint(1) DEFAULT '0',
-     `share_token` varchar(36) DEFAULT NULL,
-     `share_expiry` datetime DEFAULT NULL,
-     PRIMARY KEY (`file_id`),
-     FOREIGN KEY (`owner_id`) REFERENCES `users` (`user_id`)
-   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+      
+      -- Bảng files
+      CREATE TABLE `files` (
+        `file_id` int(11) NOT NULL AUTO_INCREMENT,
+        `owner_id` int(11) NOT NULL,
+        `file_name` varchar(255) NOT NULL,
+        `file_path` varchar(250) NOT NULL,
+        `mime_type` varchar(50) DEFAULT NULL,
+        `file_size` bigint(20) NOT NULL,
+        `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP, -- Đã được xác nhận qua hình ảnh
+        `last_modified` datetime DEFAULT CURRENT_TIMESTAMP, -- Đã được xác nhận qua hình ảnh
+        `is_shared` tinyint(1) DEFAULT '0',
+        `share_token` varchar(36) DEFAULT NULL,
+        `share_expiry` datetime DEFAULT NULL,
+        PRIMARY KEY (`file_id`),
+        FOREIGN KEY (`owner_id`) REFERENCES `users` (`user_id`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     ```
 
 3.  Cập nhật thông tin kết nối Database (URL, Tên người dùng, Mật khẩu) trong file **`FileStorageServer/src/filestorageserver/MyConnection.java`**.
