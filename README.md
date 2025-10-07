@@ -182,7 +182,6 @@ Client gửi các lệnh dưới dạng chuỗi dữ liệu qua Socket. Server (
 
 ### 2. Chạy Ứng dụng
 
-1.  **Chạy Server:** Mở project `FileStorageServer` và chạy class **`FileServer.java`** (`Ctrl + F5`). Server sẽ khởi động và lắng nghe tại cổng **12345**.
-2.  **Chạy Client:** Mở project `FileStorageClient` và chạy class **`frmLogin.java`** (`Ctrl + F5`).
+1.  **Chạy Server:** Mở project `FileStorageServer` và chạy class **`FileServer.java`** (`Ctrl + F6`). Server sẽ khởi động và lắng nghe tại cổng **12345**.
+2.  **Chạy Client:** Mở project `FileStorageClient` và chạy class **`frmLogin.java`** (`Ctrl + F6`).
 3.  Đăng ký hai tài khoản (ví dụ: `userA` và `userB`) để kiểm tra tính năng chia sẻ.
-```
