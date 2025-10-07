@@ -93,6 +93,7 @@ CREATE TABLE `file_shares` (
   FOREIGN KEY (`shared_with_user_id`) REFERENCES `users` (`user_id`) ON DELETE CASCADE,
   FOREIGN KEY (`shared_by_user_id`) REFERENCES `users` (`user_id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+```
 ## 🔑 Giao Thức Lệnh Mở Rộng (Client-Server Protocol)
 
 Client gửi các lệnh dưới dạng chuỗi dữ liệu qua Socket. Server (`ClientHandler`) phân tích cú pháp lệnh.
