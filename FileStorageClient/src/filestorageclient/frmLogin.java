@@ -124,7 +124,8 @@ public class frmLogin extends javax.swing.JFrame {
         handleRegisterButton(); // Gọi logic xử lý chính
     }//GEN-LAST:event_btnRegisterActionPerformed
     /**
-     * Logic xử lý chức năng Đăng nhập
+     * Logic xử lý chức năng Đăng nhập. Thực hiện kiểm tra đầu vào và gọi phương
+     * thức login() qua SwingWorker.
      */
     private void handleLogin() {
         String username = txtUsername.getText().trim();
@@ -139,39 +140,53 @@ public class frmLogin extends javax.swing.JFrame {
         // Tắt nút để tránh nhấn kép
         btnLogin.setEnabled(false);
 
-        // Gọi phương thức login từ ClientSocketManager
-        String result = clientManager.login(username, password);
-
-        // SỬA LỖI: Kiểm tra tiền tố và trích xuất username
-        if (result.startsWith("LOGIN_SUCCESS:")) {
-
-            String loggedInUsername = result.substring("LOGIN_SUCCESS:".length()).trim();
-
-            JOptionPane.showMessageDialog(this, "Đăng nhập thành công! Chào mừng " + loggedInUsername);
-
-            // SỬA LỖI: Thay MainClientUI thành frmMainClient và truyền 2 tham số
-            SwingUtilities.invokeLater(() -> new frmMainClient(loggedInUsername, clientManager).setVisible(true));
-            this.dispose(); // Đóng form login
-
-        } else if ("LOGIN_FAIL".equals(result)) {
-            JOptionPane.showMessageDialog(this, "Tên đăng nhập hoặc mật khẩu không đúng.",
-                    "Lỗi Đăng nhập", JOptionPane.ERROR_MESSAGE);
-            txtPassword.setText(""); // Xóa mật khẩu cũ
-        } else {
-            // Xử lý lỗi hệ thống: ERROR_CONNECTION, ERROR_IO, ...
-            JOptionPane.showMessageDialog(this, "Lỗi hệ thống: " + result,
-                    "Lỗi", JOptionPane.ERROR_MESSAGE);
-            // Nếu mất kết nối, thử kết nối lại
-            if ("ERROR_CONNECTION".equals(result) || "ERROR_IO".equals(result)) {
-                clientManager.connect();
+        // Khởi tạo và chạy SwingWorker
+        new javax.swing.SwingWorker<String, Void>() {
+            @Override
+            protected String doInBackground() throws Exception {
+                // THAO TÁC BLOCKING CHẠY Ở LUỒNG NỀN
+                return clientManager.login(username, password);
             }
-        }
 
-        btnLogin.setEnabled(true); // Bật lại nút
+            @Override
+            protected void done() {
+                try {
+                    // KẾT QUẢ ĐƯỢC NHẬN VÀ CHẠY TRÊN EDT
+                    String result = get(); // Lấy kết quả từ doInBackground()
+
+                    if (result.startsWith("LOGIN_SUCCESS:")) {
+                        String loggedInUsername = result.substring("LOGIN_SUCCESS:".length()).trim();
+                        JOptionPane.showMessageDialog(frmLogin.this, "Đăng nhập thành công! Chào mừng " + loggedInUsername);
+
+                        // Mở form chính
+                        new frmMainClient(loggedInUsername, clientManager).setVisible(true);
+                        frmLogin.this.dispose();
+
+                    } else if ("LOGIN_FAIL".equals(result)) {
+                        JOptionPane.showMessageDialog(frmLogin.this, "Tên đăng nhập hoặc mật khẩu không đúng.",
+                                "Lỗi Đăng nhập", JOptionPane.ERROR_MESSAGE);
+                        txtPassword.setText("");
+                    } else {
+                        JOptionPane.showMessageDialog(frmLogin.this, "Lỗi hệ thống: " + result,
+                                "Lỗi", JOptionPane.ERROR_MESSAGE);
+                        if ("ERROR_CONNECTION".equals(result) || "ERROR_IO".equals(result)) {
+                            clientManager.connect();
+                        }
+                    }
+                } catch (Exception ex) {
+                    logger.log(java.util.logging.Level.SEVERE, "Lỗi SwingWorker khi Đăng nhập", ex);
+                    JOptionPane.showMessageDialog(frmLogin.this, "Lỗi không xác định: " + ex.getMessage(),
+                            "Lỗi", JOptionPane.ERROR_MESSAGE);
+                } finally {
+                    btnLogin.setEnabled(true); // Bật lại nút dù thành công hay thất bại
+                }
+            }
+        }.execute(); // Chạy SwingWorker
     }
 
     /**
-     * Logic xử lý chức năng Đăng ký (mở form mới)
+     * Logic xử lý chức năng Đăng ký. Mở form đăng ký và ẩn form đăng nhập hiện
+     * tại.
      */
     private void handleRegisterButton() {
         // Cần đảm bảo rằng frmRegister có constructor nhận (JFrame, ClientSocketManager)

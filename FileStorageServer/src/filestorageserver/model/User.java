@@ -7,16 +7,16 @@ package filestorageserver.model;
 import java.sql.Timestamp; // Sử dụng Timestamp cho các cột DATETIME
 
 public class User {
-    
+
     // Tên thuộc tính phải khớp với tên cột trong CSDL (hoặc tuân theo quy ước Java camelCase)
-    private int userId; 
+    private int userId;
     private String username;
     private String passwordHash; // Cần thiết để lấy hash ra so sánh khi đăng nhập
     private String email;
     private Timestamp createdAt;
     private Timestamp lastLogin;
     private boolean isActive; // Dùng boolean thay cho TINYINT(1) trong Java
-    
+
     // Constructor mặc định
     public User() {
     }
@@ -31,10 +31,9 @@ public class User {
         this.lastLogin = lastLogin;
         this.isActive = isActive;
     }
-    
+
     // --- GETTERS & SETTERS (RẤT QUAN TRỌNG) ---
     // NetBeans có thể tự động tạo bằng cách nhấn chuột phải -> Insert Code -> Getter and Setter
-
     public int getUserId() {
         return userId;
     }
@@ -53,7 +52,7 @@ public class User {
 
     // Bắt buộc phải có getter cho passwordHash để UserDAO có thể lấy ra so sánh!
     public String getPasswordHash() {
-        return passwordHash; 
+        return passwordHash;
     }
 
     public void setPasswordHash(String passwordHash) {

@@ -1,6 +1,6 @@
 # Compiled class files & build artifacts
 *.class
-*.jar
+#*.jar
 *.war
 *.ear
 /dist/
@@ -16,3 +16,4 @@
 # Log files and local data
 *.log
 log/
+/FileStorageClient/dist/

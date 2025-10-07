@@ -28,43 +28,63 @@ public class UserDAO {
      * @param username Tên đăng nhập.
      * @param password Mật khẩu thô (plain text).
      * @param email Email người dùng.
-     * @return true nếu đăng ký thành công, false nếu thất bại (trùng
-     * username/email hoặc lỗi CSDL).
+     * @return Mã trạng thái đăng ký.
      */
-    public boolean registerUser(String username, String password, String email) {
+    public String registerUser(String username, String password, String email) {
 
-        // Câu lệnh SQL phải CHỈ ĐỊNH rõ các cột (bao gồm salt)
-        // Các cột có giá trị mặc định (status, created_at, is_active) sẽ được DB tự điền.
-        String SQL = "INSERT INTO users (username, password_hash, salt, email) VALUES (?, ?, ?, ?)";
+        // 1. KIỂM TRA TÊN ĐĂNG NHẬP (USERNAME)
+        if (usernameExists(username)) {
+            System.err.println("Đăng ký thất bại: Tên đăng nhập " + username + " đã tồn tại.");
+            return "REGISTER_FAIL_USERNAME_EXIST"; // Mã lỗi chi tiết
+        }
+
+        // 2. KIỂM TRA EMAIL ĐÃ TỒN TẠI
+        if (emailExists(email)) {
+            System.err.println("Đăng ký thất bại: Email " + email + " đã được sử dụng.");
+            return "REGISTER_FAIL_EMAIL_EXIST"; // Mã lỗi chi tiết
+        }
+
+        // 3. TẠO HASH PASSWORD VÀ SALT (BCrypt tự nhúng salt vào hash)
+        // 🔥 GIẢ ĐỊNH CSDL CHỈ CÓ CỘT password_hash (KHÔNG CỘT salt RIÊNG) 🔥
+        String sql = "INSERT INTO users (username, password_hash, email) VALUES (?, ?, ?)";
 
         try {
-            // 1. TẠO SALT VÀ HASH PASSWORD
-            String salt = BCrypt.gensalt(); // Tạo salt ngẫu nhiên
-            String hashedPassword = BCrypt.hashpw(password, salt); // Băm mật khẩu bằng salt vừa tạo
+            // BCrypt.gensalt() tạo ra salt ngẫu nhiên
+            // BCrypt.hashpw() tạo ra chuỗi hash hoàn chỉnh bao gồm cost, salt và hash
+            String hashedPassword = BCrypt.hashpw(password, BCrypt.gensalt());
 
-            // 2. KẾT NỐI VÀ THỰC THI
-            try (Connection con = getConnection(); PreparedStatement ps = con.prepareStatement(SQL)) {
+            // 4. KẾT NỐI VÀ THỰC THI
+            // Sửa lại cách sử dụng try-with-resources để con và ps được đóng đúng cách
+            try (Connection con = getConnection(); PreparedStatement ps = con.prepareStatement(sql)) {
+
+                // Cần kiểm tra con == null ngay lập tức sau khi gọi getConnection()
+                if (con == null) {
+                    System.err.println("Không thể kết nối CSDL khi thực hiện đăng ký.");
+                    return "REGISTER_FAIL_DB_ERROR"; // Lỗi kết nối
+                }
 
                 ps.setString(1, username);
-                ps.setString(2, hashedPassword); // Lưu chuỗi băm
-                ps.setString(3, salt);            // Lưu chuỗi salt ngẫu nhiên
-                ps.setString(4, email);
+                ps.setString(2, hashedPassword);
+                ps.setString(3, email);
 
                 int affectedRows = ps.executeUpdate();
 
-                return affectedRows > 0;
+                if (affectedRows > 0) {
+                    return "REGISTER_SUCCESS"; // Thành công
+                } else {
+                    return "REGISTER_FAIL_DB_ERROR"; // Thất bại (không có hàng nào bị ảnh hưởng)
+                }
             }
 
         } catch (SQLException e) {
-            // Lỗi này có thể là do trùng lặp (UNIQUE constraint) hoặc lỗi DB khác
             System.err.println("Lỗi CSDL khi đăng ký: " + e.getMessage());
+            // Lỗi CSDL thường do ràng buộc UNIQUE (nếu không kiểm tra trước) hoặc cấu trúc bảng
             e.printStackTrace();
-            return false;
+            return "REGISTER_FAIL_DB_ERROR";
         } catch (Exception e) {
-            // Lỗi khác (ví dụ: không load được BCrypt)
-            System.err.println("Lỗi khi băm mật khẩu: " + e.getMessage());
+            System.err.println("Lỗi khi băm mật khẩu hoặc lỗi nội bộ khác: " + e.getMessage());
             e.printStackTrace();
-            return false;
+            return "REGISTER_FAIL_INTERNAL_ERROR"; // Mã lỗi mới cho lỗi không liên quan đến CSDL/tồn tại
         }
     }
 
@@ -77,7 +97,7 @@ public class UserDAO {
      * @return Đối tượng User nếu đăng nhập thành công, null nếu thất bại.
      */
     public User login(String username, String password) {
-        // Chỉ lấy user_id và password_hash để xác minh
+        // Không cần truy vấn cột 'salt' vì nó nằm trong 'password_hash'
         String sql = "SELECT user_id, password_hash, email, created_at, last_login, is_active FROM Users WHERE username = ?";
 
         try (Connection con = getConnection(); PreparedStatement ps = con.prepareStatement(sql)) {
@@ -91,16 +111,12 @@ public class UserDAO {
                 if (rs.next()) {
                     String storedHash = rs.getString("password_hash");
 
-                    // *** BƯỚC 2: XÁC MINH MẬT KHẨU (BẮT BUỘC VÌ BẢO MẬT) ***
-                    // boolean passwordMatches = BCrypt.checkpw(password, storedHash);
-                    // Vì chưa có BCrypt, ta tạm thời so sánh chuỗi thô.
+                    // XÁC MINH MẬT KHẨU BẰNG BCrypt (ĐÚNG BẢO MẬT)
                     boolean passwordMatches = BCrypt.checkpw(password, storedHash);
 
                     if (passwordMatches) {
-                        // Cập nhật last_login ngay lập tức (nên dùng PreparedStatement riêng biệt cho UPDATE)
                         updateLastLogin(rs.getInt("user_id"));
 
-                        // Trả về đối tượng User đầy đủ
                         User user = new User();
                         user.setUserId(rs.getInt("user_id"));
                         user.setUsername(username);
@@ -117,7 +133,7 @@ public class UserDAO {
         } catch (SQLException ex) {
             System.err.println("Lỗi CSDL khi đăng nhập: " + ex.getMessage());
         }
-        return null; // Tên đăng nhập không tồn tại hoặc mật khẩu sai
+        return null;
     }
 
     // 3. CẬP NHẬT (UPDATE) last_login
@@ -304,5 +320,53 @@ public class UserDAO {
             System.err.println("Lỗi CSDL khi xóa người dùng: " + ex.getMessage());
         }
         return false;
+    }
+
+    /**
+     * Kiểm tra email đã tồn tại chưa (hữu ích cho đăng ký).
+     *
+     * @param email Địa chỉ email.
+     * @return true nếu email đã tồn tại, false nếu chưa.
+     */
+    public boolean emailExists(String email) {
+        String sql = "SELECT COUNT(*) FROM Users WHERE email = ?";
+        try (Connection con = getConnection(); PreparedStatement ps = con.prepareStatement(sql)) {
+            if (con == null) {
+                return false;
+            }
+
+            ps.setString(1, email);
+
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getInt(1) > 0;
+                }
+            }
+        } catch (SQLException ex) {
+            System.err.println("Lỗi CSDL khi kiểm tra email: " + ex.getMessage());
+        }
+        return false;
+    }
+
+    /**
+     * Tìm kiếm User ID dựa trên Tên đăng nhập.
+     *
+     * @return userId nếu tìm thấy, -1 nếu không tìm thấy.
+     */
+    public int getUserIdByUsername(String username) {
+        // Kiểm tra trong bảng users
+        String sql = "SELECT user_id FROM users WHERE username = ?";
+        try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
+
+            ps.setString(1, username);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getInt("user_id");
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return -1; // Trả về -1 nếu không tìm thấy
     }
 }

@@ -35,6 +35,10 @@ public class File {
     // Trạng thái chia sẻ (1: Shared, 0: Private)
     private boolean isShared;
 
+    private boolean isSharedToMe;
+
+    private String sharerName;
+
     // --- CONSTRUCTORS ---
     public File() {
     }
@@ -123,5 +127,21 @@ public class File {
 
     public void setLastModified(Timestamp lastModified) {
         this.lastModified = lastModified;
+    }
+
+    public boolean isIsSharedToMe() {
+        return isSharedToMe;
+    }
+
+    public void setIsSharedToMe(boolean isSharedToMe) {
+        this.isSharedToMe = isSharedToMe;
+    }
+
+    public String getSharerName() {
+        return sharerName;
+    }
+
+    public void setSharerName(String sharerName) {
+        this.sharerName = sharerName;
     }
 }

@@ -6,12 +6,14 @@ package filestorageclient;
 
 import java.io.*;
 import java.net.Socket;
+import javax.net.SocketFactory;
+import javax.net.ssl.SSLSocketFactory;
 
 public class ClientSocketManager {
 
     // Hằng số kết nối
     private static final String SERVER_IP = "127.0.0.1";
-    private static final int SERVER_PORT = 12345;       // Cổng phải khớp với FileServer.java
+    private static final int SERVER_PORT = 12345;
 
     private Socket socket;
     private DataInputStream dis;
@@ -30,15 +32,23 @@ public class ClientSocketManager {
         if (isConnected) {
             return true;
         }
+        String absoluteTrustStorePath = "C:\\Users\\Admin\\OneDrive\\Documents\\NetBeansProjects\\File-Storage-Java-Socket\\Drivers\\SSL\\client.jks";
         try {
-            socket = new Socket(SERVER_IP, SERVER_PORT);
+            // Đặt đường dẫn TrustStore (Drivers/SSL/client.jks)
+            System.setProperty("javax.net.ssl.trustStore", absoluteTrustStorePath);
+            // Đặt mật khẩu TrustStore
+            System.setProperty("javax.net.ssl.trustStorePassword", "123456"); // SỬ DỤNG MẬT KHẨU ĐÃ ĐẶT
+
+            // TẠO SSLSocket
+            SocketFactory sf = SSLSocketFactory.getDefault();
+            socket = sf.createSocket(SERVER_IP, SERVER_PORT);
             dos = new DataOutputStream(socket.getOutputStream());
             dis = new DataInputStream(socket.getInputStream());
             isConnected = true;
-            System.out.println("Đã kết nối thành công đến Server.");
+            System.out.println("Đã kết nối SECURE thành công đến Server.");
             return true;
         } catch (IOException e) {
-            System.err.println("Lỗi kết nối đến Server: " + e.getMessage());
+            System.err.println("Lỗi kết nối SSL đến Server: " + e.getMessage());
             isConnected = false;
             return false;
         }
@@ -67,11 +77,6 @@ public class ClientSocketManager {
     }
 
     // --- XỬ LÝ AUTHENTICATION ---
-    /**
-     * Thực hiện yêu cầu đăng ký người dùng mới.
-     *
-     * @return Chuỗi phản hồi từ Server (REGISTER_SUCCESS/FAIL).
-     */
     public String register(String username, String password, String email) {
         if (!isConnected && !connect()) {
             return "ERROR_CONNECTION";
@@ -89,11 +94,6 @@ public class ClientSocketManager {
         }
     }
 
-    /**
-     * Thực hiện yêu cầu đăng nhập.
-     *
-     * @return Chuỗi phản hồi từ Server (LOGIN_SUCCESS/FAIL/ERROR).
-     */
     public String login(String username, String password) {
         if (!isConnected && !connect()) {
             return "ERROR_CONNECTION";
@@ -122,12 +122,6 @@ public class ClientSocketManager {
     }
 
     // --- XỬ LÝ FILE ---
-    /**
-     * Gửi một file lên Server.
-     *
-     * @param fileToUpload Đối tượng java.io.File cần upload.
-     * @return Chuỗi phản hồi từ Server.
-     */
     public String uploadFile(java.io.File fileToUpload) {
         if (currentUserId == -1) {
             return "ERROR_NOT_LOGGED_IN";
@@ -141,7 +135,6 @@ public class ClientSocketManager {
             dos.writeUTF("CMD_UPLOAD");
             dos.writeUTF(fileToUpload.getName());
             dos.writeLong(fileToUpload.length());
-            // Lấy kiểu file cơ bản (Cần thư viện phức tạp hơn cho MIME Type chính xác)
             dos.writeUTF(getFileType(fileToUpload.getName()));
             dos.flush();
 
@@ -167,13 +160,6 @@ public class ClientSocketManager {
         }
     }
 
-    /**
-     * Yêu cầu Server gửi file và lưu về máy cục bộ.
-     *
-     * @param fileName Tên của file cần download trên Server.
-     * @param fileToSave Đối tượng File cục bộ để lưu.
-     * @return Chuỗi phản hồi (DOWNLOAD_SUCCESS/FAIL).
-     */
     public String downloadFile(int fileId, java.io.File fileToSave) {
         if (currentUserId == -1) {
             return "ERROR_NOT_LOGGED_IN";
@@ -182,7 +168,7 @@ public class ClientSocketManager {
         try {
             // 1. Gửi lệnh và Tên file
             dos.writeUTF("CMD_DOWNLOAD");
-            dos.writeInt(fileId); // Gửi tên file thay vì ID
+            dos.writeInt(fileId); // Gửi ID file (int)
             dos.flush();
 
             // 2. Đọc phản hồi khởi đầu
@@ -192,13 +178,12 @@ public class ClientSocketManager {
             }
 
             // 3. Nhận Metadata
-            // Server sẽ gửi lại tên file và kích thước
             String receivedFileName = dis.readUTF();
             long fileSize = dis.readLong();
 
             // 4. Mở FileOutputStream để ghi file tại đường dẫn đã chọn
             try (FileOutputStream fos = new FileOutputStream(fileToSave)) {
-                // 5. Nhận Dữ liệu File Vật lý (Phần logic này giữ nguyên)
+                // 5. Nhận Dữ liệu File Vật lý
                 byte[] buffer = new byte[8192];
                 int bytesRead;
                 long totalBytesRead = 0;
@@ -221,9 +206,6 @@ public class ClientSocketManager {
         }
     }
 
-    /**
-     * Thực hiện yêu cầu đăng xuất và ngắt kết nối.
-     */
     public void logout() {
         if (isConnected) {
             try {
@@ -241,7 +223,9 @@ public class ClientSocketManager {
      * Yêu cầu Server gửi danh sách file của người dùng hiện tại.
      *
      * @return Chuỗi chứa dữ liệu danh sách file đã định dạng lại
-     * (ID|Tên|Size|Date;...) hoặc thông báo lỗi.
+     * (ID|Tên|Size|Date|Status;...) hoặc thông báo lỗi.
+     *
+     * 🔥 ĐÃ SỬA: Đồng bộ với giao thức trả về chuỗi của Server.
      */
     public String listFiles() {
         if (currentUserId == -1) {
@@ -251,38 +235,17 @@ public class ClientSocketManager {
             dos.writeUTF("CMD_LISTFILES");
             dos.flush();
 
-            // 1. Nhận phản hồi khởi đầu (LIST_START hoặc LIST_FAIL)
+            // Server sẽ gửi một chuỗi duy nhất:
+            // - Thành công: "FILELIST_START:ID|Name|Size|Date|Status;..."
+            // - Thất bại: "FILELIST_FAIL_SERVER_ERROR"
             String response = dis.readUTF();
-            if (!"LIST_START".equals(response)) {
-                return response; // Trả về LIST_FAIL hoặc lỗi khác
+
+            if (response.startsWith("FILELIST_START:")) {
+                // Trả về chuỗi dữ liệu (có thể dùng subString để loại bỏ tiền tố nếu cần ở lớp ngoài)
+                return response;
+            } else {
+                return response; // Trả về mã lỗi
             }
-
-            // 2. Nhận số lượng file
-            int numberOfFiles = dis.readInt();
-
-            StringBuilder fileListString = new StringBuilder("LIST_SUCCESS:"); // Tiền tố mới
-
-            // 3. Lặp lại để đọc dữ liệu cho từng file
-            for (int i = 0; i < numberOfFiles; i++) {
-                // LƯU Ý: Phải đọc đúng thứ tự Server đã gửi (FileID, FileName, FileSize, UploadDate)
-                int fileId = dis.readInt();
-                String fileName = dis.readUTF();
-                long fileSize = dis.readLong();
-                String uploadDate = dis.readUTF(); // Timestamp dưới dạng String
-
-                // Xây dựng chuỗi dữ liệu file mới theo định dạng Client dễ xử lý (ví dụ: | là ngăn cách cột, ; là ngăn cách hàng)
-                fileListString.append(fileId).append("|")
-                        .append(fileName).append("|")
-                        .append(fileSize).append("|")
-                        .append(uploadDate);
-
-                if (i < numberOfFiles - 1) {
-                    fileListString.append(";"); // Thêm dấu chấm phẩy nếu không phải là file cuối cùng
-                }
-            }
-
-            // Trả về chuỗi danh sách file đã được định dạng lại
-            return fileListString.toString();
 
         } catch (IOException e) {
             System.err.println("Lỗi I/O khi yêu cầu danh sách file: " + e.getMessage());
@@ -290,12 +253,6 @@ public class ClientSocketManager {
         }
     }
 
-    /**
-     * Yêu cầu Server xóa một file theo tên.
-     *
-     * @param fileName Tên file cần xóa.
-     * @return Chuỗi phản hồi từ Server (DELETE_SUCCESS/FAIL).
-     */
     public String deleteFile(int fileId) {
         if (currentUserId == -1) {
             return "ERROR_NOT_LOGGED_IN";
@@ -312,7 +269,6 @@ public class ClientSocketManager {
     }
 
     // --- PHƯƠNG THỨC TIỆN ÍCH ---
-    // Giả định đơn giản, có thể dùng thư viện Apache Tika để xử lý tốt hơn
     private String getFileType(String fileName) {
         int dotIndex = fileName.lastIndexOf('.');
         if (dotIndex == -1 || dotIndex == fileName.length() - 1) {
@@ -332,6 +288,101 @@ public class ClientSocketManager {
             default:
                 return "application/octet-stream";
         }
+    }
+
+    /**
+     * Gửi yêu cầu chia sẻ file 🔥 ĐÃ SỬA: Loại bỏ throws IOException, sử dụng
+     * sendCommand mới
+     */
+    public String shareFile(int fileId, String targetUsername, String permission) {
+        if (currentUserId == -1) {
+            return "ERROR_NOT_LOGGED_IN";
+        }
+        // Lệnh SHARE: [ID file]| [Tên người nhận]| [Quyền hạn (Download Only)]
+        String command = "SHARE:" + fileId + "|" + targetUsername + "|" + permission;
+        return sendCommand(command);
+    }
+
+    /**
+     * Gửi yêu cầu lấy danh sách người dùng được chia sẻ file 🔥 ĐÃ SỬA: Loại bỏ
+     * throws IOException, sử dụng sendCommand mới
+     */
+    public String listShares(int fileId) {
+        if (currentUserId == -1) {
+            return "ERROR_NOT_LOGGED_IN";
+        }
+        // Lệnh SHARE_LIST: [ID file]
+        String command = "SHARE_LIST:" + fileId;
+        return sendCommand(command);
+    }
+
+    /**
+     * Gửi yêu cầu hủy chia sẻ
+     *
+     * @param fileId ID file sở hữu
+     * @param targetUsername Username người nhận đã được chia sẻ
+     * @return Chuỗi phản hồi từ Server 🔥 ĐÃ SỬA: Đồng bộ với định dạng Server
+     * yêu cầu: FileID|TargetUsername
+     */
+    public String unshareFile(int fileId, String targetUsername) {
+        if (currentUserId == -1) {
+            return "ERROR_NOT_LOGGED_IN";
+        }
+        // Lệnh UNSHARE: [FileID]| [TargetUsername]
+        String command = "UNSHARE:" + fileId + "|" + targetUsername;
+        return sendCommand(command);
+    }
+
+    /**
+     * Gửi một lệnh dạng chuỗi đến Server và chờ phản hồi.
+     *
+     * @param command Chuỗi lệnh cần gửi
+     * @return Chuỗi phản hồi từ Server hoặc mã lỗi cục bộ. 🔥 ĐÃ SỬA: Bắt
+     * IOException tại đây thay vì ném lên.
+     */
+    public String sendCommand(String command) {
+        if (!isConnected) {
+            return "ERROR_CONNECTION";
+        }
+        try {
+            // Gửi lệnh dạng chuỗi
+            dos.writeUTF(command);
+            dos.flush();
+
+            // Đọc phản hồi từ Server
+            return dis.readUTF();
+        } catch (IOException e) {
+            System.err.println("Lỗi I/O khi gửi lệnh (" + command + "): " + e.getMessage());
+            return "ERROR_IO_COMMAND";
+        }
+    }
+
+    /**
+     * Gửi yêu cầu cập nhật quyền chia sẻ cho một người dùng cụ thể.
+     *
+     * * @param fileId ID của file sở hữu
+     * @param targetUsername Username người nhận cần thay đổi quyền
+     * @param newPermissionLevel Mức quyền mới (1: Read-Only, 2: Read-Write,...)
+     * @return Chuỗi phản hồi từ Server (ví dụ: "UPDATE_SUCCESS",
+     * "UPDATE_FAIL_AUTH",...)
+     */
+    public String changeSharePermission(int fileId, String targetUsername, int newPermissionLevel) {
+        if (currentUserId == -1) {
+            return "ERROR_NOT_LOGGED_IN";
+        }
+
+        // Định dạng lệnh: CHANGE_PERM:[FileID]|[TargetUsername]|[NewPermissionLevel]
+        String command = "CHANGE_PERM:" + fileId + "|" + targetUsername + "|" + newPermissionLevel;
+
+        // Sử dụng hàm sendCommand đã có để gửi lệnh và nhận phản hồi
+        String response = sendCommand(command);
+
+        // Chỉ log lỗi I/O nếu sendCommand trả về lỗi I/O chung
+        if (response.equals("ERROR_IO_COMMAND") || response.equals("ERROR_CONNECTION")) {
+            System.err.println("Lỗi khi gọi changeSharePermission. Mã lỗi: " + response);
+        }
+
+        return response;
     }
 
     public boolean isClientConnected() {
