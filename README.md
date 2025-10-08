@@ -129,7 +129,6 @@ Client gửi các lệnh dưới dạng chuỗi dữ liệu qua Socket. Server (
 
 ### 1. Thiết lập Cơ sở Dữ liệu
 
-<<<<<<< HEAD
 1.  Tạo Database mới có tên: **`file_storage_db`** (sử dụng XAMPP/MySQL Workbench).
 2.  Thực thi toàn bộ đoạn mã SQL trong mục "Cấu trúc Cơ sở Dữ liệu" để tạo ba bảng: users, files, và file_shares.
 3.  Cập nhật thông tin kết nối Database (URL, User, Pass) trong file **`FileStorageServer/src/filestorageserver/MyConnection.java`**.
@@ -178,10 +177,9 @@ Client gửi các lệnh dưới dạng chuỗi dữ liệu qua Socket. Server (
     ```
 
 3.  Cập nhật thông tin kết nối Database (URL, Tên người dùng, Mật khẩu) trong file **`FileStorageServer/src/filestorageserver/MyConnection.java`**.
->>>>>>> 2810e1869c7805bb3bdd98b2c80fe8664021e14d
 
 ### 2. Chạy Ứng dụng
 
-1.  **Chạy Server:** Mở project `FileStorageServer` và chạy class **`FileServer.java`** (`Ctrl + F6`). Server sẽ khởi động và lắng nghe tại cổng **12345**.
-2.  **Chạy Client:** Mở project `FileStorageClient` và chạy class **`frmLogin.java`** (`Ctrl + F6`).
+1.  **Chạy Server:** Mở project `FileStorageServer` và chạy class **`FileServer.java`** (`Shift + F6`). Server sẽ khởi động và lắng nghe tại cổng **12345**.
+2.  **Chạy Client:** Mở project `FileStorageClient` và chạy class **`frmLogin.java`** (`Shift + F6`).
 3.  Đăng ký hai tài khoản (ví dụ: `userA` và `userB`) để kiểm tra tính năng chia sẻ.
