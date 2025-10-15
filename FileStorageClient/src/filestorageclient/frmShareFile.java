@@ -13,52 +13,44 @@ import java.awt.event.WindowEvent;   // Import cần thiết
 import java.util.logging.Level;
 import java.util.List;
 import filestorageclient.frmMainClient;
+import java.util.logging.Logger;
 
 public class frmShareFile extends javax.swing.JFrame {
 
-    private static final java.util.logging.Logger logger = java.util.logging.Logger.getLogger(frmShareFile.class.getName());
+    private final ClientSocketManager clientManager = ClientSocketManager.getInstance();
 
     private final frmMainClient parentForm;
-
     private final int fileId;
     private final String fileName;
-    private final ClientSocketManager clientSocket;
     private final DefaultTableModel sharedUsersTableModel;
+    private static final Logger logger = Logger.getLogger(frmShareFile.class.getName());
 
-    public frmShareFile(frmMainClient parentForm, int fileId, String fileName, ClientSocketManager clientSocket) {
-        this.parentForm = parentForm; // GÁN form cha
+    public frmShareFile(frmMainClient parentForm, int fileId, String fileName) {
+        this.parentForm = parentForm;
         this.fileId = fileId;
         this.fileName = fileName;
-        this.clientSocket = clientSocket;
 
         initComponents();
         this.setLocationRelativeTo(null);
-        // Thay vì DISPOSE_ON_CLOSE đơn thuần, ta thêm WindowListener
         this.setDefaultCloseOperation(javax.swing.WindowConstants.DISPOSE_ON_CLOSE);
 
-        // THÊM: WindowListener để xử lý sự kiện đóng
         this.addWindowListener(new WindowAdapter() {
             @Override
             public void windowClosed(WindowEvent e) {
                 if (parentForm != null) {
-                    parentForm.setEnabled(true); // Kích hoạt lại form cha
-                    // GỌI HÀM CẬP NHẬT TỪ FORM CHA
+                    parentForm.setEnabled(true);
                     parentForm.loadFileList();
                 }
             }
         });
 
-        // 1. Cập nhật tiêu đề và tên file hiển thị
         this.setTitle("Quản lý Chia sẻ File: " + fileName);
         jLabel1.setText("File: " + fileName);
 
-        // 2. Thiết lập Model cho bảng chia sẻ
         sharedUsersTableModel = new DefaultTableModel(
-                new Object[][]{},
-                // THÊM CỘT "Sharing day" VÀO ĐÂY
-                new String[]{"User Name", "Permission Level", "Sharing day"}
+            new Object[][]{},
+            new String[]{"User Name", "Permission Level", "Sharing day"}
         ) {
-            // Ngăn chặn việc chỉnh sửa trực tiếp trên bảng
             @Override
             public boolean isCellEditable(int row, int column) {
                 return false;
@@ -66,32 +58,18 @@ public class frmShareFile extends javax.swing.JFrame {
         };
         sharedUsersTable.setModel(sharedUsersTableModel);
 
-        // 3. Tải danh sách người đã chia sẻ ngay khi form mở
         loadSharedUsers();
-        sharedUsersTable.getSelectionModel().addListSelectionListener(new ListSelectionListener() {
-            @Override
-            public void valueChanged(ListSelectionEvent e) {
-                // Đảm bảo sự kiện chỉ xử lý một lần (khi selection thay đổi hoàn toàn)
-                if (!e.getValueIsAdjusting()) {
-                    updateShareFieldsFromTable();
-                }
+        
+        sharedUsersTable.getSelectionModel().addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting()) {
+                updateShareFieldsFromTable();
             }
         });
     }
 
     public frmShareFile() {
-        this.parentForm = null;
-        this.fileId = -1;
-        this.fileName = "N/A";
-        this.clientSocket = null;
-        // Khởi tạo model tạm thời để tránh NullPointerException khi gọi initComponents()
-        DefaultTableModel tempModel = new DefaultTableModel(
-                new Object[][]{},
-                new String[]{"User Name", "Permission Level"}
-        );
-        this.sharedUsersTableModel = tempModel;
-        initComponents();
-        sharedUsersTable.setModel(tempModel);
+        this(null, -1, "N/A");
+        //initComponents();
     }
 
     /**
@@ -226,66 +204,51 @@ public class frmShareFile extends javax.swing.JFrame {
      */
     private void loadSharedUsers() {
         if (sharedUsersTableModel != null) {
-            sharedUsersTableModel.setRowCount(0); // Xóa dữ liệu cũ trên EDT
+            sharedUsersTableModel.setRowCount(0);
         }
 
-        if (clientSocket == null || !clientSocket.isClientConnected()) {
+        if (clientManager == null || !clientManager.isClientConnected()) {
             JOptionPane.showMessageDialog(this, "Lỗi kết nối Server.", "Lỗi", JOptionPane.ERROR_MESSAGE);
             return;
         }
 
-        // Sử dụng SwingWorker để thực hiện lệnh listShares
         new SwingWorker<String, Void>() {
             @Override
             protected String doInBackground() {
-                // SỬ DỤNG PHƯƠNG THỨC MỚI CỦA ClientSocketManager
-                return clientSocket.listShares(fileId);
+                return clientManager.listShares(fileId);
             }
 
             @Override
             protected void done() {
-                // Cập nhật UI (EDT Task)
                 try {
-                    String response = get(); // Lấy kết quả từ doInBackground()
-
+                    String response = get();
                     if (response.startsWith("SHARELIST_START:")) {
                         String data = response.substring("SHARELIST_START:".length());
                         if (!data.isEmpty()) {
                             String[] userEntries = data.split(";");
                             for (String entry : userEntries) {
                                 String[] parts = entry.split("\\|");
-
                                 if (parts.length == 3) {
                                     String username = parts[0];
-                                    String sharedDate = parts[2]; // Lấy giá trị Sharing day
+                                    String sharedDate = parts[2];
                                     try {
                                         int permLevel = Integer.parseInt(parts[1]);
                                         String permText = (permLevel == 2) ? "Edit/Delete" : "Download Only";
-
-                                        // THÊM CỘT sharedDate VÀO DỮ LIỆU CỦA HÀNG
                                         sharedUsersTableModel.addRow(new Object[]{username, permText, sharedDate});
                                     } catch (NumberFormatException nfe) {
                                         logger.warning("Dữ liệu cấp độ quyền không hợp lệ: " + parts[1]);
                                     }
                                 } else {
-                                    logger.warning("Dữ liệu chia sẻ không đúng định dạng (thiếu ngày/tháng): " + entry);
+                                    logger.warning("Dữ liệu chia sẻ không đúng định dạng: " + entry);
                                 }
                             }
-                        } else {
-                            logger.info("File ID " + fileId + " chưa được chia sẻ cho ai.");
                         }
                     } else if (response.equals("SHARELIST_EMPTY")) {
-                        logger.info("Server báo cáo danh sách chia sẻ trống (SHARELIST_EMPTY).");
-                    } else if (response.equals("SHARELIST_FAIL_AUTH")) {
-                        JOptionPane.showMessageDialog(frmShareFile.this, "Lỗi: Bạn không phải chủ sở hữu file này.", "Lỗi Quyền", JOptionPane.ERROR_MESSAGE);
-                    } else if (response.startsWith("ERROR_")) {
-                        // Bắt các lỗi I/O, Connection từ sendCommand/listShares
-                        JOptionPane.showMessageDialog(frmShareFile.this, "Lỗi mạng/hệ thống khi tải danh sách: " + response, "Lỗi", JOptionPane.ERROR_MESSAGE);
+                        logger.info("Server báo cáo danh sách chia sẻ trống.");
                     } else {
                         JOptionPane.showMessageDialog(frmShareFile.this, "Lỗi khi tải danh sách chia sẻ: " + response, "Lỗi Server", JOptionPane.ERROR_MESSAGE);
                     }
                 } catch (Exception e) {
-                    // Xử lý InterruptedException/ExecutionException
                     JOptionPane.showMessageDialog(frmShareFile.this, "Lỗi xử lý luồng: " + e.getMessage(), "Lỗi Hệ thống", JOptionPane.ERROR_MESSAGE);
                 }
             }
@@ -298,25 +261,22 @@ public class frmShareFile extends javax.swing.JFrame {
      */
     private void updateShareFieldsFromTable() {
         int selectedRow = sharedUsersTable.getSelectedRow();
-
         if (selectedRow >= 0) {
             String username = (String) sharedUsersTableModel.getValueAt(selectedRow, 0);
             String permText = (String) sharedUsersTableModel.getValueAt(selectedRow, 1);
             txtTargetUsername.setText(username);
             cmbPermission.setSelectedItem(permText);
 
-            // KHI HÀNG ĐƯỢC CHỌN (CHUẨN BỊ UPDATE/UNSHARE)
-            btnDoShare.setEnabled(false);    // Tắt Share (vì đây là người dùng đã được chia sẻ)
-            btnDoUpdate.setEnabled(true);   // Bật Update
-            btnDoUnshare.setEnabled(true);  // Bật Unshare
-
+            btnDoShare.setEnabled(false);
+            btnDoUpdate.setEnabled(true);
+            btnDoUnshare.setEnabled(true);
         } else {
             txtTargetUsername.setText("");
             cmbPermission.setSelectedIndex(0);
 
-            btnDoShare.setEnabled(true);    // Bật Share
-            btnDoUpdate.setEnabled(false);  // Tắt Update
-            btnDoUnshare.setEnabled(false); // Tắt Unshare
+            btnDoShare.setEnabled(true);
+            btnDoUpdate.setEnabled(false);
+            btnDoUnshare.setEnabled(false);
         }
     }
 
@@ -327,59 +287,35 @@ public class frmShareFile extends javax.swing.JFrame {
             return;
         }
 
-        // Lấy chuỗi từ ComboBox
         final String permissionString = (String) cmbPermission.getSelectedItem();
-        // Quy đổi sang mã số: "Download Only" -> "1", "Edit/Delete" -> "2"
         final String permCode = (permissionString.equals("Edit/Delete")) ? "2" : "1";
 
-        if (clientSocket == null || !clientSocket.isClientConnected()) {
-            JOptionPane.showMessageDialog(this, "Lỗi kết nối Server.", "Lỗi", JOptionPane.ERROR_MESSAGE);
-            return;
-        }
-
-        btnDoShare.setEnabled(false); // Vô hiệu hóa nút
+        btnDoShare.setEnabled(false);
 
         new SwingWorker<String, Void>() {
             @Override
             protected String doInBackground() {
-                return clientSocket.shareFile(fileId, targetUsername, permCode);
+                return clientManager.shareFile(fileId, targetUsername, permCode);
             }
 
             @Override
             protected void done() {
                 try {
                     String response = get();
-
                     switch (response) {
                         case "SHARE_SUCCESS":
                             JOptionPane.showMessageDialog(frmShareFile.this, "Chia sẻ thành công cho user: " + targetUsername, "Thành công", JOptionPane.INFORMATION_MESSAGE);
-                            loadSharedUsers(); // Tải lại danh sách sau khi chia sẻ
+                            loadSharedUsers();
                             txtTargetUsername.setText("");
                             break;
-                        case "SHARE_FAIL_USER_NOT_FOUND":
-                            JOptionPane.showMessageDialog(frmShareFile.this, "Lỗi: Người dùng '" + targetUsername + "' không tồn tại.", "Lỗi", JOptionPane.ERROR_MESSAGE);
-                            break;
-                        case "SHARE_FAIL_SELF_SHARE":
-                            JOptionPane.showMessageDialog(frmShareFile.this, "Lỗi: Bạn không thể tự chia sẻ file cho chính mình.", "Lỗi", JOptionPane.ERROR_MESSAGE);
-                            break;
-                        case "SHARE_FAIL_DUPLICATE":
-                            JOptionPane.showMessageDialog(frmShareFile.this, "Lỗi: File đã được chia sẻ cho người dùng này.", "Lỗi", JOptionPane.ERROR_MESSAGE);
-                            break;
-                        case "SHARE_FAIL_AUTH":
-                            JOptionPane.showMessageDialog(frmShareFile.this, "Lỗi: Bạn không có quyền chia sẻ file này.", "Lỗi", JOptionPane.ERROR_MESSAGE);
-                            break;
-                        case "SHARE_FAIL_DB":
-                            JOptionPane.showMessageDialog(frmShareFile.this, "Lỗi: Chia sẻ thất bại (Lỗi CSDL).", "Lỗi CSDL", JOptionPane.ERROR_MESSAGE);
-                            break;
                         default:
-                            JOptionPane.showMessageDialog(frmShareFile.this, "Lỗi chia sẻ không xác định: " + response, "Lỗi", JOptionPane.ERROR_MESSAGE);
+                            JOptionPane.showMessageDialog(frmShareFile.this, "Lỗi chia sẻ: " + response, "Lỗi", JOptionPane.ERROR_MESSAGE);
                             break;
                     }
-
                 } catch (Exception e) {
                     JOptionPane.showMessageDialog(frmShareFile.this, "Mất kết nối hoặc lỗi I/O: " + e.getMessage(), "Lỗi Mạng", JOptionPane.ERROR_MESSAGE);
                 } finally {
-                    btnDoShare.setEnabled(true); // Bật lại nút
+                    btnDoShare.setEnabled(true);
                 }
             }
         }.execute();
@@ -394,60 +330,35 @@ public class frmShareFile extends javax.swing.JFrame {
             return;
         }
 
-        // Lấy tên người dùng từ bảng
         final String targetUsername = (String) sharedUsersTableModel.getValueAt(selectedRow, 0);
-
-        int confirm = JOptionPane.showConfirmDialog(this,
-                "Bạn có chắc chắn muốn hủy chia sẻ file này với người dùng '" + targetUsername + "'?",
-                "Xác nhận hủy chia sẻ", JOptionPane.YES_NO_OPTION);
+        int confirm = JOptionPane.showConfirmDialog(this, "Bạn có chắc chắn muốn hủy chia sẻ với '" + targetUsername + "'?", "Xác nhận", JOptionPane.YES_NO_OPTION);
 
         if (confirm != JOptionPane.YES_OPTION) {
             return;
         }
 
-        if (clientSocket == null || !clientSocket.isClientConnected()) {
-            JOptionPane.showMessageDialog(this, "Lỗi kết nối Server.", "Lỗi", JOptionPane.ERROR_MESSAGE);
-            return;
-        }
-
-        btnDoUnshare.setEnabled(false); // Vô hiệu hóa nút
+        btnDoUnshare.setEnabled(false);
 
         new SwingWorker<String, Void>() {
             @Override
             protected String doInBackground() {
-                // SỬ DỤNG PHƯƠNG THỨC MỚI CỦA ClientSocketManager
-                // Lưu ý: ClientSocketManager.unshareFile(fileId, targetUsername)
-                return clientSocket.unshareFile(fileId, targetUsername);
+                return clientManager.unshareFile(fileId, targetUsername);
             }
 
             @Override
             protected void done() {
                 try {
                     String response = get();
-
-                    switch (response) {
-                        case "UNSHARE_SUCCESS":
-                            JOptionPane.showMessageDialog(frmShareFile.this, "Hủy chia sẻ thành công với user: " + targetUsername, "Thành công", JOptionPane.INFORMATION_MESSAGE);
-                            loadSharedUsers(); // Tải lại danh sách
-                            break;
-                        case "UNSHARE_FAIL_NOT_SHARED":
-                            JOptionPane.showMessageDialog(frmShareFile.this, "Lỗi: File chưa được chia sẻ cho người dùng này.", "Lỗi", JOptionPane.ERROR_MESSAGE);
-                            break;
-                        case "UNSHARE_FAIL_AUTH":
-                            JOptionPane.showMessageDialog(frmShareFile.this, "Lỗi: Bạn không có quyền hủy chia sẻ file này.", "Lỗi", JOptionPane.ERROR_MESSAGE);
-                            break;
-                        case "UNSHARE_FAIL_DB":
-                            JOptionPane.showMessageDialog(frmShareFile.this, "Lỗi: Hủy chia sẻ thất bại (Lỗi CSDL).", "Lỗi CSDL", JOptionPane.ERROR_MESSAGE);
-                            break;
-                        default:
-                            JOptionPane.showMessageDialog(frmShareFile.this, "Lỗi hủy chia sẻ không xác định: " + response, "Lỗi", JOptionPane.ERROR_MESSAGE);
-                            break;
+                    if ("UNSHARE_SUCCESS".equals(response)) {
+                        JOptionPane.showMessageDialog(frmShareFile.this, "Hủy chia sẻ thành công với user: " + targetUsername, "Thành công", JOptionPane.INFORMATION_MESSAGE);
+                        loadSharedUsers();
+                    } else {
+                        JOptionPane.showMessageDialog(frmShareFile.this, "Lỗi hủy chia sẻ: " + response, "Lỗi", JOptionPane.ERROR_MESSAGE);
                     }
-
                 } catch (Exception e) {
                     JOptionPane.showMessageDialog(frmShareFile.this, "Mất kết nối hoặc lỗi I/O: " + e.getMessage(), "Lỗi Mạng", JOptionPane.ERROR_MESSAGE);
                 } finally {
-                    btnDoUnshare.setEnabled(true); // Bật lại nút
+                    btnDoUnshare.setEnabled(true);
                 }
             }
         }.execute();
@@ -462,83 +373,42 @@ public class frmShareFile extends javax.swing.JFrame {
      * tồn tại.
      */
     private void btnDoUpdateActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnDoUpdateActionPerformed
-        // 1. Kiểm tra đầu vào và trạng thái
         final String targetUsername = txtTargetUsername.getText().trim();
         if (targetUsername.isEmpty() || sharedUsersTable.getSelectedRow() == -1) {
-            JOptionPane.showMessageDialog(this, "Lỗi: Vui lòng chọn người dùng trong danh sách để cập nhật quyền.", "Lỗi Logic", JOptionPane.WARNING_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Vui lòng chọn người dùng trong danh sách để cập nhật quyền.", "Lỗi", JOptionPane.WARNING_MESSAGE);
             return;
         }
 
         final String permissionString = (String) cmbPermission.getSelectedItem();
-        // Quy đổi sang mã số: "Download Only" -> 1, "Edit/Delete" -> 2
-        final int permCode = (permissionString.equals("Edit/Delete")) ? 2 : 1; // Sử dụng int thay vì String
+        final int permCode = (permissionString.equals("Edit/Delete")) ? 2 : 1;
 
-        if (clientSocket == null || !clientSocket.isClientConnected()) {
-            JOptionPane.showMessageDialog(this, "Lỗi kết nối Server.", "Lỗi", JOptionPane.ERROR_MESSAGE);
-            return;
-        }
-
-        // Xác nhận hành động từ người dùng
-        int confirm = JOptionPane.showConfirmDialog(this,
-                "Bạn có chắc chắn muốn **cập nhật** quyền của '" + targetUsername
-                + "' thành '" + permissionString + "'?",
-                "Xác nhận Cập nhật Quyền", JOptionPane.YES_NO_OPTION);
-
+        int confirm = JOptionPane.showConfirmDialog(this, "Cập nhật quyền của '" + targetUsername + "' thành '" + permissionString + "'?", "Xác nhận", JOptionPane.YES_NO_OPTION);
         if (confirm != JOptionPane.YES_OPTION) {
             return;
         }
+        
+        btnDoUpdate.setEnabled(false);
 
-        btnDoUpdate.setEnabled(false); // Vô hiệu hóa nút trong khi xử lý
-
-        // 2. Thực hiện tác vụ nền (SwingWorker)
         new SwingWorker<String, Void>() {
             @Override
             protected String doInBackground() {
-                // 🔥 SỬ DỤNG HÀM CHANGE_PERM MỚI 🔥
-                return clientSocket.changeSharePermission(fileId, targetUsername, permCode);
+                return clientManager.changeSharePermission(fileId, targetUsername, permCode);
             }
 
             @Override
             protected void done() {
                 try {
                     String response = get();
-
-                    switch (response) {
-                        case "UPDATE_SUCCESS":
-                            JOptionPane.showMessageDialog(frmShareFile.this, "Cập nhật quyền thành công cho user: " + targetUsername, "Thành công", JOptionPane.INFORMATION_MESSAGE);
-                            loadSharedUsers(); // Tải lại danh sách để người dùng thấy quyền mới
-                            break;
-
-                        case "UPDATE_FAIL_USER_NOT_FOUND":
-                            JOptionPane.showMessageDialog(frmShareFile.this, "Lỗi: Người dùng '" + targetUsername + "' không tồn tại.", "Lỗi", JOptionPane.ERROR_MESSAGE);
-                            break;
-
-                        case "UPDATE_FAIL_NOT_SHARED":
-                            JOptionPane.showMessageDialog(frmShareFile.this, "Lỗi: File chưa được chia sẻ cho người dùng này.", "Lỗi", JOptionPane.ERROR_MESSAGE);
-                            break;
-
-                        case "UPDATE_FAIL_SAME_PERMISSION":
-                            JOptionPane.showMessageDialog(frmShareFile.this, "Thông báo: Quyền hạn đã là '" + permissionString + "'. Không có gì được cập nhật.", "Thông báo", JOptionPane.INFORMATION_MESSAGE);
-                            loadSharedUsers(); // Tải lại để reset trạng thái nếu cần
-                            break;
-
-                        case "UPDATE_FAIL_AUTH":
-                            JOptionPane.showMessageDialog(frmShareFile.this, "Lỗi: Bạn không phải chủ sở hữu file này.", "Lỗi", JOptionPane.ERROR_MESSAGE);
-                            break;
-
-                        case "UPDATE_FAIL_DB":
-                            JOptionPane.showMessageDialog(frmShareFile.this, "Lỗi: Cập nhật thất bại (Lỗi CSDL).", "Lỗi CSDL", JOptionPane.ERROR_MESSAGE);
-                            break;
-
-                        default:
-                            JOptionPane.showMessageDialog(frmShareFile.this, "Lỗi cập nhật quyền không xác định: " + response, "Lỗi", JOptionPane.ERROR_MESSAGE);
-                            break;
+                    if ("UPDATE_SUCCESS".equals(response)) {
+                        JOptionPane.showMessageDialog(frmShareFile.this, "Cập nhật quyền thành công cho user: " + targetUsername, "Thành công", JOptionPane.INFORMATION_MESSAGE);
+                        loadSharedUsers();
+                    } else {
+                        JOptionPane.showMessageDialog(frmShareFile.this, "Lỗi cập nhật quyền: " + response, "Lỗi", JOptionPane.ERROR_MESSAGE);
                     }
-
                 } catch (Exception e) {
                     JOptionPane.showMessageDialog(frmShareFile.this, "Mất kết nối hoặc lỗi I/O: " + e.getMessage(), "Lỗi Mạng", JOptionPane.ERROR_MESSAGE);
                 } finally {
-                    btnDoUpdate.setEnabled(true); // Bật lại nút
+                    btnDoUpdate.setEnabled(true);
                 }
             }
         }.execute();
@@ -546,49 +416,7 @@ public class frmShareFile extends javax.swing.JFrame {
 
     /**
      * @param args the command line arguments
-     */
-    public static void main(String args[]) {
-        /* Set the Nimbus look and feel */
-        //<editor-fold defaultstate="collapsed" desc=" Look and feel setting code (optional) ">
-        /* If Nimbus (introduced in Java SE 6) is not available, stay with the default look and feel.
-         * For details see http://download.oracle.com/javase/tutorial/uiswing/lookandfeel/plaf.html 
-         */
-        try {
-            for (javax.swing.UIManager.LookAndFeelInfo info : javax.swing.UIManager.getInstalledLookAndFeels()) {
-                if ("Nimbus".equals(info.getName())) {
-                    javax.swing.UIManager.setLookAndFeel(info.getClassName());
-                    break;
-                }
-            }
-        } catch (ReflectiveOperationException | javax.swing.UnsupportedLookAndFeelException ex) {
-            logger.log(java.util.logging.Level.SEVERE, null, ex);
-        }
-        //</editor-fold>
-        try {
-            for (javax.swing.UIManager.LookAndFeelInfo info : javax.swing.UIManager.getInstalledLookAndFeels()) {
-                if ("Nimbus".equals(info.getName())) {
-                    javax.swing.UIManager.setLookAndFeel(info.getClassName());
-                    break;
-                }
-            }
-        } catch (ReflectiveOperationException | javax.swing.UnsupportedLookAndFeelException ex) {
-            logger.log(java.util.logging.Level.SEVERE, null, ex);
-        }
-        //</editor-fold>
-        try {
-            for (javax.swing.UIManager.LookAndFeelInfo info : javax.swing.UIManager.getInstalledLookAndFeels()) {
-                if ("Nimbus".equals(info.getName())) {
-                    javax.swing.UIManager.setLookAndFeel(info.getClassName());
-                    break;
-                }
-            }
-        } catch (ReflectiveOperationException | javax.swing.UnsupportedLookAndFeelException ex) {
-            logger.log(java.util.logging.Level.SEVERE, null, ex);
-        }
-        /* Create and display the form */
-        java.awt.EventQueue.invokeLater(() -> new frmShareFile().setVisible(true));
-    }
-
+     */    
     // Variables declaration - do not modify//GEN-BEGIN:variables
     private javax.swing.JButton btnClose;
     private javax.swing.JButton btnDoShare;

@@ -10,6 +10,8 @@ import javax.net.SocketFactory;
 import javax.net.ssl.SSLSocketFactory;
 
 public class ClientSocketManager {
+    // --- TẠO MỘT INSTANCE TĨNH, DUY NHẤT ---
+    private static final ClientSocketManager instance = new ClientSocketManager();
 
     // Hằng số kết nối
     private static final String SERVER_IP = "127.0.0.1";
@@ -19,27 +21,29 @@ public class ClientSocketManager {
     private DataInputStream dis;
     private DataOutputStream dos;
 
-    private int currentUserId = -1; // ID người dùng hiện tại đang đăng nhập
+    private int currentUserId = -1;
+    private String currentUsername = null; // Thêm username để quản lý
     private boolean isConnected = false;
 
-    // --- QUẢN LÝ KẾT NỐI ---
-    /**
-     * Thiết lập kết nối đến Server và khởi tạo Streams.
-     *
-     * @return true nếu kết nối thành công.
-     */
+    // --- ĐẶT CONSTRUCTOR LÀ PRIVATE ---
+    // Ngăn chặn việc tạo đối tượng từ bên ngoài bằng "new ClientSocketManager()"
+    private ClientSocketManager() {
+        // Cấu hình TrustStore có thể đặt ở đây hoặc trong phương thức connect
+        String absoluteTrustStorePath = "C:\\Users\\Admin\\OneDrive\\Documents\\NetBeansProjects\\File-Storage-Java-Socket\\Drivers\\SSL\\client.jks";
+        System.setProperty("javax.net.ssl.trustStore", absoluteTrustStorePath);
+        System.setProperty("javax.net.ssl.trustStorePassword", "123456");
+    }
+
+    // --- CUNG CẤP PHƯƠNG THỨC TĨNH ĐỂ TRUY CẬP INSTANCE ---
+    public static ClientSocketManager getInstance() {
+        return instance;
+    }
+    
     public boolean connect() {
         if (isConnected) {
             return true;
         }
-        String absoluteTrustStorePath = "C:\\Users\\Admin\\OneDrive\\Documents\\NetBeansProjects\\File-Storage-Java-Socket\\Drivers\\SSL\\client.jks";
         try {
-            // Đặt đường dẫn TrustStore (Drivers/SSL/client.jks)
-            System.setProperty("javax.net.ssl.trustStore", absoluteTrustStorePath);
-            // Đặt mật khẩu TrustStore
-            System.setProperty("javax.net.ssl.trustStorePassword", "123456"); // SỬ DỤNG MẬT KHẨU ĐÃ ĐẶT
-
-            // TẠO SSLSocket
             SocketFactory sf = SSLSocketFactory.getDefault();
             socket = sf.createSocket(SERVER_IP, SERVER_PORT);
             dos = new DataOutputStream(socket.getOutputStream());
@@ -54,25 +58,20 @@ public class ClientSocketManager {
         }
     }
 
-    /**
-     * Đóng kết nối và Streams.
-     */
     public void disconnect() {
         try {
-            if (socket != null && !socket.isClosed()) {
-                socket.close();
-            }
-            if (dos != null) {
-                dos.close();
-            }
-            if (dis != null) {
-                dis.close();
-            }
-            isConnected = false;
-            currentUserId = -1;
-            System.out.println("Đã ngắt kết nối.");
+            // Đóng các stream trước
+            if (dos != null) dos.close();
+            if (dis != null) dis.close();
+            if (socket != null && !socket.isClosed()) socket.close();
         } catch (IOException e) {
             System.err.println("Lỗi đóng kết nối: " + e.getMessage());
+        } finally {
+            // Reset trạng thái
+            isConnected = false;
+            currentUserId = -1;
+            currentUsername = null;
+            System.out.println("Đã ngắt kết nối và reset trạng thái.");
         }
     }
 
@@ -107,18 +106,20 @@ public class ClientSocketManager {
             String response = dis.readUTF();
 
             if ("LOGIN_SUCCESS".equals(response)) {
-                this.currentUserId = dis.readInt(); // Nhận ID
-                String serverUsername = dis.readUTF(); // NHẬN USERNAME TỪ SERVER
-                System.out.println("Đăng nhập thành công. User ID: " + currentUserId + ", Username: " + serverUsername);
-
-                // Trả về định dạng mà frmLogin đã sửa để mong đợi
-                return "LOGIN_SUCCESS:" + serverUsername;
+                this.currentUserId = dis.readInt();
+                this.currentUsername = dis.readUTF(); // Lưu lại username
+                System.out.println("Đăng nhập thành công. User ID: " + this.currentUserId + ", Username: " + this.currentUsername);
+                return "LOGIN_SUCCESS:" + this.currentUsername;
             }
             return response;
         } catch (IOException e) {
+            isConnected = false; // Nếu có lỗi I/O, coi như mất kết nối
             System.err.println("Lỗi I/O khi đăng nhập: " + e.getMessage());
             return "ERROR_IO";
         }
+    }
+    public String getCurrentUsername() {
+        return currentUsername;
     }
 
     // --- XỬ LÝ FILE ---
@@ -221,11 +222,6 @@ public class ClientSocketManager {
 
     /**
      * Yêu cầu Server gửi danh sách file của người dùng hiện tại.
-     *
-     * @return Chuỗi chứa dữ liệu danh sách file đã định dạng lại
-     * (ID|Tên|Size|Date|Status;...) hoặc thông báo lỗi.
-     *
-     * 🔥 ĐÃ SỬA: Đồng bộ với giao thức trả về chuỗi của Server.
      */
     public String listFiles() {
         if (currentUserId == -1) {
@@ -235,13 +231,9 @@ public class ClientSocketManager {
             dos.writeUTF("CMD_LISTFILES");
             dos.flush();
 
-            // Server sẽ gửi một chuỗi duy nhất:
-            // - Thành công: "FILELIST_START:ID|Name|Size|Date|Status;..."
-            // - Thất bại: "FILELIST_FAIL_SERVER_ERROR"
             String response = dis.readUTF();
 
             if (response.startsWith("FILELIST_START:")) {
-                // Trả về chuỗi dữ liệu (có thể dùng subString để loại bỏ tiền tố nếu cần ở lớp ngoài)
                 return response;
             } else {
                 return response; // Trả về mã lỗi
@@ -291,8 +283,7 @@ public class ClientSocketManager {
     }
 
     /**
-     * Gửi yêu cầu chia sẻ file 🔥 ĐÃ SỬA: Loại bỏ throws IOException, sử dụng
-     * sendCommand mới
+     * Gửi yêu cầu chia sẻ file 
      */
     public String shareFile(int fileId, String targetUsername, String permission) {
         if (currentUserId == -1) {
@@ -304,8 +295,7 @@ public class ClientSocketManager {
     }
 
     /**
-     * Gửi yêu cầu lấy danh sách người dùng được chia sẻ file 🔥 ĐÃ SỬA: Loại bỏ
-     * throws IOException, sử dụng sendCommand mới
+     * Gửi yêu cầu lấy danh sách người dùng được chia sẻ file
      */
     public String listShares(int fileId) {
         if (currentUserId == -1) {
@@ -318,11 +308,6 @@ public class ClientSocketManager {
 
     /**
      * Gửi yêu cầu hủy chia sẻ
-     *
-     * @param fileId ID file sở hữu
-     * @param targetUsername Username người nhận đã được chia sẻ
-     * @return Chuỗi phản hồi từ Server 🔥 ĐÃ SỬA: Đồng bộ với định dạng Server
-     * yêu cầu: FileID|TargetUsername
      */
     public String unshareFile(int fileId, String targetUsername) {
         if (currentUserId == -1) {
@@ -335,10 +320,6 @@ public class ClientSocketManager {
 
     /**
      * Gửi một lệnh dạng chuỗi đến Server và chờ phản hồi.
-     *
-     * @param command Chuỗi lệnh cần gửi
-     * @return Chuỗi phản hồi từ Server hoặc mã lỗi cục bộ. 🔥 ĐÃ SỬA: Bắt
-     * IOException tại đây thay vì ném lên.
      */
     public String sendCommand(String command) {
         if (!isConnected) {
@@ -359,12 +340,6 @@ public class ClientSocketManager {
 
     /**
      * Gửi yêu cầu cập nhật quyền chia sẻ cho một người dùng cụ thể.
-     *
-     * * @param fileId ID của file sở hữu
-     * @param targetUsername Username người nhận cần thay đổi quyền
-     * @param newPermissionLevel Mức quyền mới (1: Read-Only, 2: Read-Write,...)
-     * @return Chuỗi phản hồi từ Server (ví dụ: "UPDATE_SUCCESS",
-     * "UPDATE_FAIL_AUTH",...)
      */
     public String changeSharePermission(int fileId, String targetUsername, int newPermissionLevel) {
         if (currentUserId == -1) {

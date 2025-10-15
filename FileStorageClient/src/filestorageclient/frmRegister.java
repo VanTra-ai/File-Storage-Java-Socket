@@ -8,27 +8,20 @@ import javax.swing.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import javax.swing.SwingWorker;
+import java.util.logging.Logger;
 
 public class frmRegister extends javax.swing.JFrame {
 
-    // Đối tượng quản lý kết nối Socket
-    private final ClientSocketManager clientManager;
-    // Form cha (để hiển thị lại khi cần)
+    // LẤY INSTANCE SINGLETON ---
+    private final ClientSocketManager clientManager = ClientSocketManager.getInstance();    
     private final JFrame parentForm;
-    private static final java.util.logging.Logger logger = java.util.logging.Logger.getLogger(frmRegister.class.getName());
+    private static final Logger logger = Logger.getLogger(frmRegister.class.getName());
 
-    /**
-     * Creates new form frmRegister
-     */
-    public frmRegister(JFrame parentForm, ClientSocketManager manager) {
-        // Gán giá trị từ tham số truyền vào
+    public frmRegister(JFrame parentForm) {
         this.parentForm = parentForm;
-        this.clientManager = manager;
 
         initComponents();
-
         this.setLocationRelativeTo(null);
-        // Thiết lập hành vi khi đóng cửa sổ: Chỉ đóng form hiện tại, không thoát ứng dụng
         this.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
     }
 
@@ -190,7 +183,6 @@ public class frmRegister extends javax.swing.JFrame {
                     // Xử lý phản hồi trên EDT
                     String result = get();
 
-                    // 🔥 PHÂN TÍCH CÁC MÃ LỖI CHI TIẾT TỪ SERVER
                     switch (result) {
                         case "REGISTER_SUCCESS":
                             JOptionPane.showMessageDialog(frmRegister.this, "Đăng ký thành công! Bạn có thể đăng nhập ngay.", "Thành công", JOptionPane.INFORMATION_MESSAGE);

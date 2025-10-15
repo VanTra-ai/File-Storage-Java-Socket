@@ -9,32 +9,28 @@ import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
 import java.awt.event.ActionEvent;
 import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public class frmMainClient extends javax.swing.JFrame {
+    // --- LẤY INSTANCE SINGLETON ---
 
-    // Khai báo các biến Logic và UI (Đảm bảo tên khớp với Design View)
-    private final ClientSocketManager clientManager;
-    private final String username;
+    private final ClientSocketManager clientManager = ClientSocketManager.getInstance();
 
+    private String username; // Vẫn cần username để hiển thị lời chào
     private DefaultTableModel tableModel;
-    private static final java.util.logging.Logger logger = java.util.logging.Logger.getLogger(frmMainClient.class.getName());
+    private static final Logger logger = Logger.getLogger(frmMainClient.class.getName());
 
-    /**
-     * Khởi tạo form frmMainClient.
-     *
-     * @param username Tên người dùng hiện tại.
-     * @param manager Đối tượng quản lý kết nối socket.
-     */
-    public frmMainClient(String username, ClientSocketManager manager) {
-        this.username = username;
-        this.clientManager = manager;
+    // --- XÓA TẤT CẢ THAM SỐ CONSTRUCTOR ---
+    public frmMainClient() {
+        // --- LẤY USERNAME TRỰC TIẾP TỪ MANAGER ---
+        this.username = clientManager.getCurrentUsername();
 
         initComponents();
-        initializeTable(); // Khởi tạo JTable
+        initializeTable();
 
-        lblWelcome.setText("Xin chào, " + username + "!"); // Cập nhật lời chào
+        lblWelcome.setText("Xin chào, " + this.username + "!");
         this.setLocationRelativeTo(null);
-        this.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE); // Đóng ứng dụng khi đóng cửa sổ chính
+        this.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
     }
 
     /**
@@ -157,10 +153,8 @@ public class frmMainClient extends javax.swing.JFrame {
      * Khởi tạo cấu trúc bảng và tải danh sách file ban đầu
      */
     private void initializeTable() {
-        // 1. Định nghĩa cấu trúc cột (Đảm bảo có đủ 5 cột)
-        String[] columnNames = {"File ID", "File Name", "Size (bytes)", "Upload Date", "Status", "Sharer"}; // <--- CHẮC CHẮN MẢNG NÀY CÓ "Status"
+        String[] columnNames = {"File ID", "File Name", "Size (bytes)", "Upload Date", "Status", "Sharer"};
         tableModel = new DefaultTableModel(columnNames, 0) {
-            // Ngăn người dùng chỉnh sửa trực tiếp trên bảng
             @Override
             public boolean isCellEditable(int row, int column) {
                 return false;
@@ -168,19 +162,16 @@ public class frmMainClient extends javax.swing.JFrame {
         };
         fileTable.setModel(tableModel);
 
-        // 2. Ẩn cột "File ID" (Cột 0)
         fileTable.getColumnModel().getColumn(0).setPreferredWidth(0);
         fileTable.getColumnModel().getColumn(0).setMinWidth(0);
         fileTable.getColumnModel().getColumn(0).setMaxWidth(0);
 
-        // 3. Thiết lập chiều rộng cho cột Status (Cột 4) (Tùy chọn)
         fileTable.getColumnModel().getColumn(4).setPreferredWidth(60);
         fileTable.getColumnModel().getColumn(4).setMaxWidth(80);
 
         fileTable.getColumnModel().getColumn(5).setPreferredWidth(100);
         fileTable.getColumnModel().getColumn(5).setMaxWidth(150);
 
-        // 4. Tải dữ liệu ban đầu
         loadFileList();
     }
 
@@ -189,12 +180,11 @@ public class frmMainClient extends javax.swing.JFrame {
      * Tải danh sách file từ Server và cập nhật JTable
      */
     public void loadFileList() {
-        tableModel.setRowCount(0); // Xóa dữ liệu cũ ngay trên EDT
+        tableModel.setRowCount(0);
 
         new SwingWorker<String, Void>() {
             @Override
             protected String doInBackground() throws Exception {
-                // Thao tác mạng chạy ở luồng nền
                 return clientManager.listFiles();
             }
 
@@ -202,62 +192,33 @@ public class frmMainClient extends javax.swing.JFrame {
             protected void done() {
                 try {
                     String response = get();
-
-                    // 1. Kiểm tra tiền tố phản hồi của Server
-                    if (response.startsWith("FILELIST_START:")) { // Dùng tiền tố đã thống nhất
+                    if (response.startsWith("FILELIST_START:")) {
                         String data = response.substring("FILELIST_START:".length());
-
                         if (data.isEmpty()) {
                             return;
                         }
 
-                        // 2. Tách từng bản ghi file (phân tách bằng ";")
                         String[] files = data.split(";");
-
                         for (String fileInfo : files) {
                             if (fileInfo.trim().isEmpty()) {
                                 continue;
                             }
 
-                            // 3. Tách thông tin file (phân tách bằng "|") - PHẢI DÙNG "\\|"
                             String[] parts = fileInfo.split("\\|", -1);
-
-                            // Server gửi 6 phần: ID|TênFile|KíchThước|NgàyUpload|Status|Sharer
                             if (parts.length == 6) {
-
-                                // Format kích thước (parts[2])
                                 long fileSize = Long.parseLong(parts[2]);
                                 String formattedSize = formatSize(fileSize);
+                                String sharerName = parts[5].isEmpty() ? "" : parts[5];
 
-                                // Status (parts[4]
-                                String sharerName = parts[5];
-                                if (sharerName.isEmpty()) {
-                                    // Nếu là file Owned, Sharer là trống, hiển thị là "-" hoặc để trống
-                                    sharerName = "";
-                                }
-
-                                // Status (parts[4]) đã là chuỗi "Owned" hoặc "Shared"
-                                Object[] rowData = new Object[]{
-                                    parts[0], // File ID (Cột 0 - ẩn)
-                                    parts[1], // File Name (Cột 1)
-                                    formattedSize, // Size đã format (Cột 2)
-                                    parts[3], // Upload Date (Cột 3)
-                                    parts[4], // Status (Cột 4)
-                                    sharerName // Sharer (Cột 5)
-                                };
+                                Object[] rowData = new Object[]{parts[0], parts[1], formattedSize, parts[3], parts[4], sharerName};
                                 tableModel.addRow(rowData);
-                            } else {
-                                logger.warning("Dữ liệu file không hợp lệ (Số lượng cột sai): " + fileInfo);
                             }
                         }
-                    } else if (response.equals("FILELIST_FAIL_SERVER_ERROR")) {
-                        JOptionPane.showMessageDialog(frmMainClient.this, "Lỗi Server khi tải danh sách file.", "Lỗi", JOptionPane.ERROR_MESSAGE);
                     } else {
                         JOptionPane.showMessageDialog(frmMainClient.this, "Không thể tải danh sách file: " + response, "Lỗi", JOptionPane.ERROR_MESSAGE);
                     }
                 } catch (Exception ex) {
                     logger.log(Level.SEVERE, "Lỗi khi tải danh sách file", ex);
-                    JOptionPane.showMessageDialog(frmMainClient.this, "Lỗi kết nối khi tải danh sách file: " + ex.getMessage(), "Lỗi", JOptionPane.ERROR_MESSAGE);
                 }
             }
         }.execute();
@@ -268,7 +229,6 @@ public class frmMainClient extends javax.swing.JFrame {
      */
     private void handleLogout() {
         int confirm = JOptionPane.showConfirmDialog(this, "Bạn có chắc chắn muốn đăng xuất?", "Xác nhận", JOptionPane.YES_NO_OPTION);
-
         if (confirm == JOptionPane.YES_OPTION) {
             new SwingWorker<Void, Void>() {
                 @Override
@@ -279,18 +239,8 @@ public class frmMainClient extends javax.swing.JFrame {
 
                 @Override
                 protected void done() {
-                    // Quay lại form Login trên EDT
-                    try {
-                        // Dùng Class.forName và Reflection để tránh lỗi nếu frmLogin chưa được tạo
-                        Class<?> loginClass = Class.forName("filestorageclient.frmLogin");
-                        JFrame loginForm = (JFrame) loginClass.getDeclaredConstructor().newInstance();
-                        loginForm.setVisible(true);
-                    } catch (ClassNotFoundException | InstantiationException | IllegalAccessException | NoSuchMethodException | java.lang.reflect.InvocationTargetException e) {
-                        logger.log(Level.WARNING, "Không tìm thấy hoặc không thể khởi tạo frmLogin. Đảm bảo lớp này tồn tại.", e);
-                        JOptionPane.showMessageDialog(frmMainClient.this, "Đăng xuất thành công! Không tìm thấy form Login.", "Thông báo", JOptionPane.INFORMATION_MESSAGE);
-                    } finally {
-                        frmMainClient.this.dispose();
-                    }
+                    new frmLogin().setVisible(true);
+                    frmMainClient.this.dispose();
                 }
             }.execute();
         }
@@ -301,18 +251,14 @@ public class frmMainClient extends javax.swing.JFrame {
      */
     private void handleUpload() {
         JFileChooser fileChooser = new JFileChooser();
-        fileChooser.setFileSelectionMode(JFileChooser.FILES_ONLY);
         int result = fileChooser.showOpenDialog(this);
-
         if (result == JFileChooser.APPROVE_OPTION) {
             File selectedFile = fileChooser.getSelectedFile();
-
-            btnUpload.setEnabled(false); // Vô hiệu hóa nút trên EDT
+            btnUpload.setEnabled(false);
 
             new SwingWorker<String, Void>() {
                 @Override
                 protected String doInBackground() throws Exception {
-                    // Thao tác mạng nặng chạy ở luồng nền
                     return clientManager.uploadFile(selectedFile);
                 }
 
@@ -320,18 +266,16 @@ public class frmMainClient extends javax.swing.JFrame {
                 protected void done() {
                     try {
                         String uploadResult = get();
-
                         if ("UPLOAD_SUCCESS".equals(uploadResult)) {
                             JOptionPane.showMessageDialog(frmMainClient.this, "Upload file '" + selectedFile.getName() + "' thành công!");
-                            loadFileList(); // Cập nhật bảng
+                            loadFileList();
                         } else {
                             JOptionPane.showMessageDialog(frmMainClient.this, "Upload thất bại: " + uploadResult, "Lỗi", JOptionPane.ERROR_MESSAGE);
                         }
                     } catch (Exception ex) {
                         logger.log(Level.SEVERE, "Lỗi khi Upload file", ex);
-                        JOptionPane.showMessageDialog(frmMainClient.this, "Lỗi hệ thống khi upload: " + ex.getMessage(), "Lỗi", JOptionPane.ERROR_MESSAGE);
                     } finally {
-                        btnUpload.setEnabled(true); // Bật lại nút
+                        btnUpload.setEnabled(true);
                     }
                 }
             }.execute();
@@ -348,46 +292,36 @@ public class frmMainClient extends javax.swing.JFrame {
             return;
         }
 
-        // Lấy thông tin file trên EDT
-        String fileIdStr = (String) tableModel.getValueAt(selectedRow, 0);
-        int fileId = Integer.parseInt(fileIdStr);
+        int fileId = Integer.parseInt((String) tableModel.getValueAt(selectedRow, 0));
         String fileName = (String) tableModel.getValueAt(selectedRow, 1);
 
-        // Mở cửa sổ chọn nơi lưu file
         JFileChooser fileChooser = new JFileChooser();
-        // Gợi ý tên file mặc định
         fileChooser.setSelectedFile(new File(fileName));
-        fileChooser.setDialogTitle("Chọn nơi lưu file: " + fileName);
-
         int userSelection = fileChooser.showSaveDialog(this);
 
         if (userSelection == JFileChooser.APPROVE_OPTION) {
             File fileToSave = fileChooser.getSelectedFile();
-
-            btnDownload.setEnabled(false); // Vô hiệu hóa nút trên EDT để tránh click kép
+            btnDownload.setEnabled(false);
 
             new SwingWorker<String, Void>() {
                 @Override
                 protected String doInBackground() throws Exception {
-                    // Gọi phương thức downloadFile mới
                     return clientManager.downloadFile(fileId, fileToSave);
                 }
 
                 @Override
                 protected void done() {
-                    btnDownload.setEnabled(true); // Bật lại nút trên EDT
                     try {
                         String downloadResult = get();
-
                         if ("DOWNLOAD_SUCCESS".equals(downloadResult)) {
                             JOptionPane.showMessageDialog(frmMainClient.this, "Tải file thành công! Đã lưu tại: " + fileToSave.getAbsolutePath());
                         } else {
-                            // Xử lý các lỗi phản hồi từ Server (FILE_NOT_FOUND, PERMISSION_DENIED, DOWNLOAD_FAIL)
                             JOptionPane.showMessageDialog(frmMainClient.this, "Tải file thất bại: " + downloadResult, "Lỗi", JOptionPane.ERROR_MESSAGE);
                         }
                     } catch (Exception ex) {
                         logger.log(Level.SEVERE, "Lỗi khi Download file", ex);
-                        JOptionPane.showMessageDialog(frmMainClient.this, "Lỗi hệ thống khi download: " + ex.getMessage(), "Lỗi", JOptionPane.ERROR_MESSAGE);
+                    } finally {
+                        btnDownload.setEnabled(true);
                     }
                 }
             }.execute();
@@ -404,29 +338,21 @@ public class frmMainClient extends javax.swing.JFrame {
             return;
         }
 
-        // Lấy thông tin file trên EDT
-        String fileIdStr = (String) tableModel.getValueAt(selectedRow, 0);
-        int fileId = Integer.parseInt(fileIdStr);
+        int fileId = Integer.parseInt((String) tableModel.getValueAt(selectedRow, 0));
         String fileName = (String) tableModel.getValueAt(selectedRow, 1);
         String status = (String) tableModel.getValueAt(selectedRow, 4);
 
-        // Chỉ cho phép xóa file mình sở hữu
         if (status.equals("Shared")) {
             JOptionPane.showMessageDialog(this, "Bạn không thể xóa file được chia sẻ cho bạn.", "Lỗi", JOptionPane.ERROR_MESSAGE);
             return;
         }
 
-        int confirm = JOptionPane.showConfirmDialog(this,
-                "Bạn có chắc chắn muốn xóa file '" + fileName + "'?",
-                "Xác nhận Xóa", JOptionPane.YES_NO_OPTION);
-
+        int confirm = JOptionPane.showConfirmDialog(this, "Bạn có chắc chắn muốn xóa file '" + fileName + "'?", "Xác nhận Xóa", JOptionPane.YES_NO_OPTION);
         if (confirm == JOptionPane.YES_OPTION) {
-            btnDelete.setEnabled(false); // Vô hiệu hóa nút trên EDT
-
+            btnDelete.setEnabled(false);
             new SwingWorker<String, Void>() {
                 @Override
                 protected String doInBackground() throws Exception {
-                    // Gọi phương thức deleteFile
                     return clientManager.deleteFile(fileId);
                 }
 
@@ -434,18 +360,16 @@ public class frmMainClient extends javax.swing.JFrame {
                 protected void done() {
                     try {
                         String deleteResult = get();
-
                         if ("DELETE_SUCCESS".equals(deleteResult)) {
                             JOptionPane.showMessageDialog(frmMainClient.this, "Đã xóa file '" + fileName + "' thành công!");
-                            loadFileList(); // Cập nhật bảng
+                            loadFileList();
                         } else {
                             JOptionPane.showMessageDialog(frmMainClient.this, "Xóa file thất bại: " + deleteResult, "Lỗi", JOptionPane.ERROR_MESSAGE);
                         }
                     } catch (Exception ex) {
                         logger.log(Level.SEVERE, "Lỗi khi Xóa file", ex);
-                        JOptionPane.showMessageDialog(frmMainClient.this, "Lỗi hệ thống khi xóa: " + ex.getMessage(), "Lỗi", JOptionPane.ERROR_MESSAGE);
                     } finally {
-                        btnDelete.setEnabled(true); // Bật lại nút
+                        btnDelete.setEnabled(true);
                     }
                 }
             }.execute();
@@ -462,28 +386,20 @@ public class frmMainClient extends javax.swing.JFrame {
             return;
         }
 
-        // Lấy thông tin file trên EDT
-        String fileIdStr = (String) tableModel.getValueAt(selectedRow, 0);
-        int fileId = Integer.parseInt(fileIdStr);
+        int fileId = Integer.parseInt((String) tableModel.getValueAt(selectedRow, 0));
         String fileName = (String) tableModel.getValueAt(selectedRow, 1);
         String status = (String) tableModel.getValueAt(selectedRow, 4);
 
-        // Chỉ cho phép thao tác với file mình sở hữu (Status là "Owned")
         if (status.equals("Shared")) {
             JOptionPane.showMessageDialog(this, "Bạn chỉ có thể quản lý việc chia sẻ cho file bạn sở hữu ('Owned').", "Lỗi", JOptionPane.ERROR_MESSAGE);
             return;
         }
 
-        // 1. Ẩn form chính (tùy chọn) và vô hiệu hóa các nút
         this.setEnabled(false);
 
-        // 2. Mở form frmShareFile và truyền thông tin cần thiết
-        // SỬA DỤNG CONSTRUCTOR MỚI VÀ TRUYỀN 'this' VÀO ĐẦU TIÊN
-        frmShareFile shareForm = new frmShareFile(this, fileId, fileName, clientManager);
+        // THAY ĐỔI 3: KHÔNG CẦN TRUYỀN clientManager QUA CONSTRUCTOR NỮA
+        frmShareFile shareForm = new frmShareFile(this, fileId, fileName);
         shareForm.setVisible(true);
-
-        // Sau khi form frmShareFile đóng, hàm callback (hoặc dispose) sẽ được gọi, 
-        // lúc đó ta có thể gọi loadFileList() để cập nhật lại bảng.
     }
 
     /**
@@ -495,7 +411,7 @@ public class frmMainClient extends javax.swing.JFrame {
         }
         int unit = 1024;
         int exp = (int) (Math.log(bytes) / Math.log(unit));
-        String pre = ("KMGTPE").charAt(exp - 1) + "B";
+        String pre = "KMGTPE".charAt(exp - 1) + "B";
         return String.format("%.2f %s", bytes / Math.pow(unit, exp), pre);
     }
 
