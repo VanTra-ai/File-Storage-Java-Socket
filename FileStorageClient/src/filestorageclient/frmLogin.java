@@ -1,29 +1,30 @@
-/*
- * Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
- * Click nbfs://nbhost/SystemFileSystem/Templates/GUIForms/JFrame.java to edit this template
- */
 package filestorageclient;
 
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
-import javax.swing.JOptionPane;
-import javax.swing.SwingUtilities;
+import java.util.logging.Level;
 import java.util.logging.Logger;
+import javax.swing.JFrame;
+import javax.swing.JOptionPane;
+import javax.swing.SwingWorker;
 
+/**
+ * Giao diện đăng nhập chính của ứng dụng. Đây là cửa sổ đầu tiên người dùng
+ * tương tác.
+ */
 public class frmLogin extends javax.swing.JFrame {
 
     private final ClientSocketManager clientManager = ClientSocketManager.getInstance();
     private static final Logger logger = Logger.getLogger(frmLogin.class.getName());
 
     public frmLogin() {
+        initComponents();
+        this.setLocationRelativeTo(null); // Canh giữa màn hình
+
+        // Cố gắng kết nối ngay khi mở ứng dụng để kiểm tra trạng thái server
         if (!clientManager.connect()) {
             JOptionPane.showMessageDialog(this,
-                    "Lỗi kết nối Server. Vui lòng kiểm tra Server có đang chạy không.",
+                    "Lỗi kết nối Server. Vui lòng kiểm tra Server và khởi động lại ứng dụng.",
                     "Lỗi Kết Nối", JOptionPane.ERROR_MESSAGE);
         }
-
-        initComponents();
-        this.setLocationRelativeTo(null);
     }
 
     @SuppressWarnings("unchecked")
@@ -112,7 +113,8 @@ public class frmLogin extends javax.swing.JFrame {
         handleRegisterButton(); // Gọi logic xử lý chính
     }//GEN-LAST:event_btnRegisterActionPerformed
     /**
-     * Logic xử lý chức năng Đăng nhập.
+     * Xử lý logic khi người dùng nhấn nút Đăng nhập. Thực hiện kiểm tra đầu vào
+     * và gọi tác vụ đăng nhập trong một luồng nền.
      */
     private void handleLogin() {
         String username = txtUsername.getText().trim();
@@ -123,25 +125,25 @@ public class frmLogin extends javax.swing.JFrame {
                     "Thiếu thông tin", JOptionPane.WARNING_MESSAGE);
             return;
         }
+
         btnLogin.setEnabled(false);
-        new javax.swing.SwingWorker<String, Void>() {
+        btnRegister.setEnabled(false);
+
+        new SwingWorker<String, Void>() {
             @Override
-            protected String doInBackground() throws Exception {
+            protected String doInBackground() {
                 return clientManager.login(username, password);
             }
 
             @Override
             protected void done() {
                 try {
-                    String result = get(); 
+                    String result = get();
 
                     if (result.startsWith("LOGIN_SUCCESS:")) {
-                        String loggedInUsername = result.substring("LOGIN_SUCCESS:".length()).trim();
-                        JOptionPane.showMessageDialog(frmLogin.this, "Đăng nhập thành công! Chào mừng " + loggedInUsername);
-
+                        // Mở form chính và đóng form đăng nhập
                         new frmMainClient().setVisible(true);
                         frmLogin.this.dispose();
-
                     } else if ("LOGIN_FAIL".equals(result)) {
                         JOptionPane.showMessageDialog(frmLogin.this, "Tên đăng nhập hoặc mật khẩu không đúng.",
                                 "Lỗi Đăng nhập", JOptionPane.ERROR_MESSAGE);
@@ -149,26 +151,24 @@ public class frmLogin extends javax.swing.JFrame {
                     } else {
                         JOptionPane.showMessageDialog(frmLogin.this, "Lỗi hệ thống: " + result,
                                 "Lỗi", JOptionPane.ERROR_MESSAGE);
-                        if ("ERROR_CONNECTION".equals(result) || "ERROR_IO".equals(result)) {
-                            clientManager.connect();
-                        }
                     }
                 } catch (Exception ex) {
-                    logger.log(java.util.logging.Level.SEVERE, "Lỗi SwingWorker khi Đăng nhập", ex);
+                    logger.log(Level.SEVERE, "Lỗi SwingWorker khi đăng nhập", ex);
                     JOptionPane.showMessageDialog(frmLogin.this, "Lỗi không xác định: " + ex.getMessage(),
                             "Lỗi", JOptionPane.ERROR_MESSAGE);
                 } finally {
-                    btnLogin.setEnabled(true); 
+                    btnLogin.setEnabled(true);
+                    btnRegister.setEnabled(true);
                 }
             }
-        }.execute(); // Chạy SwingWorker
+        }.execute();
     }
 
     /**
-     * Logic xử lý chức năng Đăng ký.
+     * Mở form đăng ký khi người dùng nhấn nút Register.
      */
     private void handleRegisterButton() {
-        frmRegister registerForm = new frmRegister(this);
+        frmRegister registerForm = new frmRegister(this); // 'this' là form cha
         this.setVisible(false);
         registerForm.setVisible(true);
     }

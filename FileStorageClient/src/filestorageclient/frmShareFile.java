@@ -1,24 +1,26 @@
-/*
- * Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
- * Click nbfs://nbhost/SystemFileSystem/Templates/GUIForms/JFrame.java to edit this template
- */
 package filestorageclient;
 
-import javax.swing.*;
-import javax.swing.table.DefaultTableModel;
-import javax.swing.event.ListSelectionListener;
-import javax.swing.event.ListSelectionEvent;
-import java.awt.event.WindowAdapter; // Import cần thiết
-import java.awt.event.WindowEvent;   // Import cần thiết
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.logging.Level;
-import java.util.List;
-import filestorageclient.frmMainClient;
 import java.util.logging.Logger;
+import javax.swing.JButton;
+import javax.swing.JFrame;
+import javax.swing.JOptionPane;
+import javax.swing.SwingWorker;
+import javax.swing.WindowConstants;
+import javax.swing.table.DefaultTableModel;
 
+/**
+ * Giao diện quản lý việc chia sẻ một file cụ thể. Cho phép xem danh sách người
+ * được chia sẻ, thêm lượt chia sẻ mới, cập nhật hoặc hủy chia sẻ.
+ */
 public class frmShareFile extends javax.swing.JFrame {
 
     private final ClientSocketManager clientManager = ClientSocketManager.getInstance();
-
     private final frmMainClient parentForm;
     private final int fileId;
     private final String fileName;
@@ -29,10 +31,9 @@ public class frmShareFile extends javax.swing.JFrame {
         this.parentForm = parentForm;
         this.fileId = fileId;
         this.fileName = fileName;
-
         initComponents();
-        this.setLocationRelativeTo(null);
-        this.setDefaultCloseOperation(javax.swing.WindowConstants.DISPOSE_ON_CLOSE);
+        this.setLocationRelativeTo(parentForm);
+        this.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
 
         this.addWindowListener(new WindowAdapter() {
             @Override
@@ -44,12 +45,12 @@ public class frmShareFile extends javax.swing.JFrame {
             }
         });
 
-        this.setTitle("Quản lý Chia sẻ File: " + fileName);
-        jLabel1.setText("File: " + fileName);
+        this.setTitle("Quản lý Chia sẻ: " + fileName);
+        lblFileName.setText("File: " + fileName);
 
         sharedUsersTableModel = new DefaultTableModel(
-            new Object[][]{},
-            new String[]{"User Name", "Permission Level", "Sharing day"}
+                new Object[][]{},
+                new String[]{"User Name", "Permission", "Sharing Day", "Expires"}
         ) {
             @Override
             public boolean isCellEditable(int row, int column) {
@@ -57,19 +58,13 @@ public class frmShareFile extends javax.swing.JFrame {
             }
         };
         sharedUsersTable.setModel(sharedUsersTableModel);
-
         loadSharedUsers();
-        
+
         sharedUsersTable.getSelectionModel().addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting()) {
-                updateShareFieldsFromTable();
+                updateFieldsFromTableSelection();
             }
         });
-    }
-
-    public frmShareFile() {
-        this(null, -1, "N/A");
-        //initComponents();
     }
 
     /**
@@ -81,7 +76,7 @@ public class frmShareFile extends javax.swing.JFrame {
     // <editor-fold defaultstate="collapsed" desc="Generated Code">//GEN-BEGIN:initComponents
     private void initComponents() {
 
-        jLabel1 = new javax.swing.JLabel();
+        lblFileName = new javax.swing.JLabel();
         txtTargetUsername = new javax.swing.JTextField();
         cmbPermission = new javax.swing.JComboBox<>();
         btnDoShare = new javax.swing.JButton();
@@ -91,10 +86,11 @@ public class frmShareFile extends javax.swing.JFrame {
         btnDoUnshare = new javax.swing.JButton();
         jLabel2 = new javax.swing.JLabel();
         btnDoUpdate = new javax.swing.JButton();
+        cmbExpiryTime = new javax.swing.JComboBox<>();
 
         setDefaultCloseOperation(javax.swing.WindowConstants.EXIT_ON_CLOSE);
 
-        jLabel1.setText("File name");
+        lblFileName.setText("File name");
 
         txtTargetUsername.setText("User name");
 
@@ -116,13 +112,13 @@ public class frmShareFile extends javax.swing.JFrame {
 
         sharedUsersTable.setModel(new javax.swing.table.DefaultTableModel(
             new Object [][] {
-                {null, null, null},
-                {null, null, null},
-                {null, null, null},
-                {null, null, null}
+                {null, null, null, null},
+                {null, null, null, null},
+                {null, null, null, null},
+                {null, null, null, null}
             },
             new String [] {
-                "User Name", "Permission Level", "Sharing day"
+                "User Name", "Permission Level", "Sharing day", "Expires"
             }
         ));
         jScrollPane1.setViewportView(sharedUsersTable);
@@ -143,6 +139,8 @@ public class frmShareFile extends javax.swing.JFrame {
             }
         });
 
+        cmbExpiryTime.setModel(new javax.swing.DefaultComboBoxModel<>(new String[] { "Unlimited", "1 minute", "2 minute", "5 minute" }));
+
         javax.swing.GroupLayout layout = new javax.swing.GroupLayout(getContentPane());
         getContentPane().setLayout(layout);
         layout.setHorizontalGroup(
@@ -150,41 +148,46 @@ public class frmShareFile extends javax.swing.JFrame {
             .addGroup(layout.createSequentialGroup()
                 .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                     .addGroup(layout.createSequentialGroup()
-                        .addGap(17, 17, 17)
-                        .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
-                            .addGroup(layout.createSequentialGroup()
-                                .addComponent(jLabel2)
-                                .addGap(29, 29, 29)
-                                .addComponent(txtTargetUsername))
-                            .addGroup(layout.createSequentialGroup()
-                                .addGap(197, 197, 197)
-                                .addComponent(cmbPermission, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
-                            .addComponent(jLabel1)
-                            .addGroup(layout.createSequentialGroup()
-                                .addGap(29, 29, 29)
-                                .addComponent(btnDoShare)
-                                .addGap(26, 26, 26)
-                                .addComponent(btnDoUpdate)
-                                .addGap(28, 28, 28)
-                                .addComponent(btnDoUnshare)
-                                .addGap(32, 32, 32)
-                                .addComponent(btnClose))))
-                    .addGroup(layout.createSequentialGroup()
                         .addGap(35, 35, 35)
-                        .addComponent(jScrollPane1, javax.swing.GroupLayout.PREFERRED_SIZE, 397, javax.swing.GroupLayout.PREFERRED_SIZE)))
+                        .addComponent(jScrollPane1, javax.swing.GroupLayout.PREFERRED_SIZE, 397, javax.swing.GroupLayout.PREFERRED_SIZE))
+                    .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
+                        .addGroup(layout.createSequentialGroup()
+                            .addGap(165, 165, 165)
+                            .addComponent(cmbPermission, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                            .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
+                            .addComponent(cmbExpiryTime, javax.swing.GroupLayout.PREFERRED_SIZE, 128, javax.swing.GroupLayout.PREFERRED_SIZE))
+                        .addGroup(javax.swing.GroupLayout.Alignment.LEADING, layout.createSequentialGroup()
+                            .addGap(17, 17, 17)
+                            .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
+                                .addGroup(layout.createSequentialGroup()
+                                    .addComponent(jLabel2)
+                                    .addGap(29, 29, 29)
+                                    .addComponent(txtTargetUsername))
+                                .addComponent(lblFileName)
+                                .addGroup(layout.createSequentialGroup()
+                                    .addGap(29, 29, 29)
+                                    .addComponent(btnDoShare)
+                                    .addGap(26, 26, 26)
+                                    .addComponent(btnDoUpdate)
+                                    .addGap(28, 28, 28)
+                                    .addComponent(btnDoUnshare)
+                                    .addGap(32, 32, 32)
+                                    .addComponent(btnClose))))))
                 .addContainerGap(44, Short.MAX_VALUE))
         );
         layout.setVerticalGroup(
             layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
             .addGroup(layout.createSequentialGroup()
                 .addGap(17, 17, 17)
-                .addComponent(jLabel1)
+                .addComponent(lblFileName)
                 .addGap(10, 10, 10)
                 .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
                     .addComponent(txtTargetUsername, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
                     .addComponent(jLabel2))
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
-                .addComponent(cmbPermission, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                    .addComponent(cmbPermission, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addComponent(cmbExpiryTime, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
                 .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
                     .addComponent(btnDoShare)
@@ -200,15 +203,11 @@ public class frmShareFile extends javax.swing.JFrame {
     }// </editor-fold>//GEN-END:initComponents
 
     /**
-     * Tải danh sách người dùng đã được chia sẻ file này từ Server
+     * Tải danh sách người dùng được chia sẻ từ server và cập nhật bảng.
      */
     private void loadSharedUsers() {
-        if (sharedUsersTableModel != null) {
-            sharedUsersTableModel.setRowCount(0);
-        }
-
-        if (clientManager == null || !clientManager.isClientConnected()) {
-            JOptionPane.showMessageDialog(this, "Lỗi kết nối Server.", "Lỗi", JOptionPane.ERROR_MESSAGE);
+        sharedUsersTableModel.setRowCount(0);
+        if (!clientManager.isLoggedIn()) {
             return;
         }
 
@@ -224,48 +223,76 @@ public class frmShareFile extends javax.swing.JFrame {
                     String response = get();
                     if (response.startsWith("SHARELIST_START:")) {
                         String data = response.substring("SHARELIST_START:".length());
-                        if (!data.isEmpty()) {
-                            String[] userEntries = data.split(";");
-                            for (String entry : userEntries) {
-                                String[] parts = entry.split("\\|");
-                                if (parts.length == 3) {
-                                    String username = parts[0];
-                                    String sharedDate = parts[2];
-                                    try {
-                                        int permLevel = Integer.parseInt(parts[1]);
-                                        String permText = (permLevel == 2) ? "Edit/Delete" : "Download Only";
-                                        sharedUsersTableModel.addRow(new Object[]{username, permText, sharedDate});
-                                    } catch (NumberFormatException nfe) {
-                                        logger.warning("Dữ liệu cấp độ quyền không hợp lệ: " + parts[1]);
-                                    }
-                                } else {
-                                    logger.warning("Dữ liệu chia sẻ không đúng định dạng: " + entry);
-                                }
+                        if (data.isEmpty()) {
+                            return;
+                        }
+
+                        String[] userEntries = data.split(";");
+                        for (String entry : userEntries) {
+                            String[] parts = entry.split("\\|");
+                            if (parts.length == 4) {
+                                String username = parts[0];
+                                int permLevel = Integer.parseInt(parts[1]);
+                                String permText = (permLevel == 2) ? "Edit/Delete" : "Download Only";
+                                String sharedDate = parts[2];
+                                String expiryDateStr = parts[3];
+                                String durationDisplay = calculateDurationDisplay(sharedDate, expiryDateStr);
+
+                                sharedUsersTableModel.addRow(new Object[]{username, permText, sharedDate, durationDisplay});
                             }
                         }
-                    } else if (response.equals("SHARELIST_EMPTY")) {
-                        logger.info("Server báo cáo danh sách chia sẻ trống.");
-                    } else {
-                        JOptionPane.showMessageDialog(frmShareFile.this, "Lỗi khi tải danh sách chia sẻ: " + response, "Lỗi Server", JOptionPane.ERROR_MESSAGE);
+                    } else if (!response.equals("SHARELIST_EMPTY")) {
+                        JOptionPane.showMessageDialog(frmShareFile.this, "Lỗi khi tải danh sách: " + response, "Lỗi Server", JOptionPane.ERROR_MESSAGE);
                     }
                 } catch (Exception e) {
-                    JOptionPane.showMessageDialog(frmShareFile.this, "Lỗi xử lý luồng: " + e.getMessage(), "Lỗi Hệ thống", JOptionPane.ERROR_MESSAGE);
+                    logger.log(Level.SEVERE, "Lỗi khi xử lý danh sách chia sẻ", e);
                 }
             }
         }.execute();
     }
 
     /**
-     * Điền thông tin người dùng được chọn từ bảng vào các trường nhập để chuẩn
-     * bị cho việc thay đổi quyền.
+     * Suy luận ngược chuỗi hiển thị thời hạn từ thời gian bắt đầu và kết thúc.
      */
-    private void updateShareFieldsFromTable() {
+    private String calculateDurationDisplay(String sharedAtStr, String expiryAtStr) {
+        if (expiryAtStr == null || expiryAtStr.equals("NULL")) {
+            return "Unlimited";
+        }
+        try {
+            SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+            Date sharedDate = sdf.parse(sharedAtStr);
+            Date expiryDate = sdf.parse(expiryAtStr);
+            long diffMinutes = (expiryDate.getTime() - sharedDate.getTime()) / (60 * 1000);
+
+            if (diffMinutes <= 1) {
+                return "1 minute";
+            }
+            if (diffMinutes <= 2) {
+                return "2 minute";
+            }
+            if (diffMinutes <= 5) {
+                return "5 minute";
+            }
+
+            return "Custom";
+        } catch (ParseException e) {
+            return "Invalid Date";
+        }
+    }
+
+    /**
+     * Cập nhật các trường nhập liệu dựa trên hàng được chọn trong bảng.
+     */
+    private void updateFieldsFromTableSelection() {
         int selectedRow = sharedUsersTable.getSelectedRow();
         if (selectedRow >= 0) {
             String username = (String) sharedUsersTableModel.getValueAt(selectedRow, 0);
             String permText = (String) sharedUsersTableModel.getValueAt(selectedRow, 1);
+            String durationText = (String) sharedUsersTableModel.getValueAt(selectedRow, 3);
+
             txtTargetUsername.setText(username);
             cmbPermission.setSelectedItem(permText);
+            cmbExpiryTime.setSelectedItem(durationText);
 
             btnDoShare.setEnabled(false);
             btnDoUpdate.setEnabled(true);
@@ -273,6 +300,7 @@ public class frmShareFile extends javax.swing.JFrame {
         } else {
             txtTargetUsername.setText("");
             cmbPermission.setSelectedIndex(0);
+            cmbExpiryTime.setSelectedIndex(0);
 
             btnDoShare.setEnabled(true);
             btnDoUpdate.setEnabled(false);
@@ -280,45 +308,76 @@ public class frmShareFile extends javax.swing.JFrame {
         }
     }
 
-    private void btnDoShareActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnDoShareActionPerformed
-        final String targetUsername = txtTargetUsername.getText().trim();
-        if (targetUsername.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "Vui lòng nhập Tên người dùng muốn chia sẻ.", "Lỗi", JOptionPane.WARNING_MESSAGE);
-            return;
-        }
-
-        final String permissionString = (String) cmbPermission.getSelectedItem();
-        final String permCode = (permissionString.equals("Edit/Delete")) ? "2" : "1";
-
-        btnDoShare.setEnabled(false);
+    /**
+     * Phương thức chung để thực hiện các hành động share, update, unshare.
+     */
+    private void performShareAction(String actionType, String targetUsername, String permCode, int expiryMinutes) {
+        JButton sourceButton = "share".equals(actionType) ? btnDoShare : ("update".equals(actionType) ? btnDoUpdate : btnDoUnshare);
+        sourceButton.setEnabled(false);
 
         new SwingWorker<String, Void>() {
             @Override
             protected String doInBackground() {
-                return clientManager.shareFile(fileId, targetUsername, permCode);
+                switch (actionType) {
+                    case "share":
+                        return clientManager.shareFile(fileId, targetUsername, permCode, expiryMinutes);
+                    case "update":
+                        return clientManager.changeSharePermission(fileId, targetUsername, Integer.parseInt(permCode), expiryMinutes);
+                    case "unshare":
+                        return clientManager.unshareFile(fileId, targetUsername);
+                    default:
+                        return "INVALID_ACTION";
+                }
             }
 
             @Override
             protected void done() {
                 try {
                     String response = get();
-                    switch (response) {
-                        case "SHARE_SUCCESS":
-                            JOptionPane.showMessageDialog(frmShareFile.this, "Chia sẻ thành công cho user: " + targetUsername, "Thành công", JOptionPane.INFORMATION_MESSAGE);
-                            loadSharedUsers();
+                    String successPrefix = actionType.toUpperCase() + "_SUCCESS";
+                    if (response.equals(successPrefix)) {
+                        JOptionPane.showMessageDialog(frmShareFile.this, "Thao tác thành công!", "Thành công", JOptionPane.INFORMATION_MESSAGE);
+                        loadSharedUsers();
+                        if ("share".equals(actionType)) {
                             txtTargetUsername.setText("");
-                            break;
-                        default:
-                            JOptionPane.showMessageDialog(frmShareFile.this, "Lỗi chia sẻ: " + response, "Lỗi", JOptionPane.ERROR_MESSAGE);
-                            break;
+                        }
+                    } else {
+                        JOptionPane.showMessageDialog(frmShareFile.this, "Lỗi: " + response, "Thao tác thất bại", JOptionPane.ERROR_MESSAGE);
                     }
                 } catch (Exception e) {
-                    JOptionPane.showMessageDialog(frmShareFile.this, "Mất kết nối hoặc lỗi I/O: " + e.getMessage(), "Lỗi Mạng", JOptionPane.ERROR_MESSAGE);
+                    JOptionPane.showMessageDialog(frmShareFile.this, "Lỗi giao tiếp mạng: " + e.getMessage(), "Lỗi", JOptionPane.ERROR_MESSAGE);
                 } finally {
-                    btnDoShare.setEnabled(true);
+                    sourceButton.setEnabled(true);
                 }
             }
         }.execute();
+    }
+
+    private void btnDoShareActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnDoShareActionPerformed
+        String targetUsername = txtTargetUsername.getText().trim();
+        if (targetUsername.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "Vui lòng nhập Username.", "Lỗi", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        String permissionString = (String) cmbPermission.getSelectedItem();
+        String permCode = (permissionString.equals("Edit/Delete")) ? "2" : "1";
+
+        String expiryString = (String) cmbExpiryTime.getSelectedItem();
+        int expiryMinutes = 0;
+        switch (expiryString) {
+            case "1 minute":
+                expiryMinutes = 1;
+                break;
+            case "2 minute":
+                expiryMinutes = 2;
+                break;
+            case "5 minute":
+                expiryMinutes = 5;
+                break;
+        }
+
+        performShareAction("share", targetUsername, permCode, expiryMinutes);
     }//GEN-LAST:event_btnDoShareActionPerformed
     /**
      * Xử lý hành động Hủy Chia sẻ (Unshare)
@@ -326,42 +385,17 @@ public class frmShareFile extends javax.swing.JFrame {
     private void btnDoUnshareActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnDoUnshareActionPerformed
         int selectedRow = sharedUsersTable.getSelectedRow();
         if (selectedRow == -1) {
-            JOptionPane.showMessageDialog(this, "Vui lòng chọn một người dùng trong danh sách để hủy chia sẻ.", "Cảnh báo", JOptionPane.WARNING_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Vui lòng chọn một người dùng để hủy chia sẻ.", "Cảnh báo", JOptionPane.WARNING_MESSAGE);
             return;
         }
+        String targetUsername = (String) sharedUsersTableModel.getValueAt(selectedRow, 0);
 
-        final String targetUsername = (String) sharedUsersTableModel.getValueAt(selectedRow, 0);
-        int confirm = JOptionPane.showConfirmDialog(this, "Bạn có chắc chắn muốn hủy chia sẻ với '" + targetUsername + "'?", "Xác nhận", JOptionPane.YES_NO_OPTION);
-
+        int confirm = JOptionPane.showConfirmDialog(this, "Hủy chia sẻ file này với '" + targetUsername + "'?", "Xác nhận", JOptionPane.YES_NO_OPTION);
         if (confirm != JOptionPane.YES_OPTION) {
             return;
         }
 
-        btnDoUnshare.setEnabled(false);
-
-        new SwingWorker<String, Void>() {
-            @Override
-            protected String doInBackground() {
-                return clientManager.unshareFile(fileId, targetUsername);
-            }
-
-            @Override
-            protected void done() {
-                try {
-                    String response = get();
-                    if ("UNSHARE_SUCCESS".equals(response)) {
-                        JOptionPane.showMessageDialog(frmShareFile.this, "Hủy chia sẻ thành công với user: " + targetUsername, "Thành công", JOptionPane.INFORMATION_MESSAGE);
-                        loadSharedUsers();
-                    } else {
-                        JOptionPane.showMessageDialog(frmShareFile.this, "Lỗi hủy chia sẻ: " + response, "Lỗi", JOptionPane.ERROR_MESSAGE);
-                    }
-                } catch (Exception e) {
-                    JOptionPane.showMessageDialog(frmShareFile.this, "Mất kết nối hoặc lỗi I/O: " + e.getMessage(), "Lỗi Mạng", JOptionPane.ERROR_MESSAGE);
-                } finally {
-                    btnDoUnshare.setEnabled(true);
-                }
-            }
-        }.execute();
+        performShareAction("unshare", targetUsername, null, 0);
     }//GEN-LAST:event_btnDoUnshareActionPerformed
 
     private void btnCloseActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnCloseActionPerformed
@@ -373,59 +407,45 @@ public class frmShareFile extends javax.swing.JFrame {
      * tồn tại.
      */
     private void btnDoUpdateActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnDoUpdateActionPerformed
-        final String targetUsername = txtTargetUsername.getText().trim();
+        String targetUsername = txtTargetUsername.getText().trim();
         if (targetUsername.isEmpty() || sharedUsersTable.getSelectedRow() == -1) {
-            JOptionPane.showMessageDialog(this, "Vui lòng chọn người dùng trong danh sách để cập nhật quyền.", "Lỗi", JOptionPane.WARNING_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Vui lòng chọn một người dùng trong danh sách.", "Lỗi", JOptionPane.WARNING_MESSAGE);
             return;
         }
 
-        final String permissionString = (String) cmbPermission.getSelectedItem();
-        final int permCode = (permissionString.equals("Edit/Delete")) ? 2 : 1;
+        String permissionString = (String) cmbPermission.getSelectedItem();
+        int permCode = (permissionString.equals("Edit/Delete")) ? 2 : 1;
 
-        int confirm = JOptionPane.showConfirmDialog(this, "Cập nhật quyền của '" + targetUsername + "' thành '" + permissionString + "'?", "Xác nhận", JOptionPane.YES_NO_OPTION);
-        if (confirm != JOptionPane.YES_OPTION) {
-            return;
+        String expiryString = (String) cmbExpiryTime.getSelectedItem();
+        int expiryMinutes = 0;
+        switch (expiryString) {
+            case "1 minute":
+                expiryMinutes = 1;
+                break;
+            case "2 minute":
+                expiryMinutes = 2;
+                break;
+            case "5 minute":
+                expiryMinutes = 5;
+                break;
         }
-        
-        btnDoUpdate.setEnabled(false);
 
-        new SwingWorker<String, Void>() {
-            @Override
-            protected String doInBackground() {
-                return clientManager.changeSharePermission(fileId, targetUsername, permCode);
-            }
-
-            @Override
-            protected void done() {
-                try {
-                    String response = get();
-                    if ("UPDATE_SUCCESS".equals(response)) {
-                        JOptionPane.showMessageDialog(frmShareFile.this, "Cập nhật quyền thành công cho user: " + targetUsername, "Thành công", JOptionPane.INFORMATION_MESSAGE);
-                        loadSharedUsers();
-                    } else {
-                        JOptionPane.showMessageDialog(frmShareFile.this, "Lỗi cập nhật quyền: " + response, "Lỗi", JOptionPane.ERROR_MESSAGE);
-                    }
-                } catch (Exception e) {
-                    JOptionPane.showMessageDialog(frmShareFile.this, "Mất kết nối hoặc lỗi I/O: " + e.getMessage(), "Lỗi Mạng", JOptionPane.ERROR_MESSAGE);
-                } finally {
-                    btnDoUpdate.setEnabled(true);
-                }
-            }
-        }.execute();
+        performShareAction("update", targetUsername, String.valueOf(permCode), expiryMinutes);
     }//GEN-LAST:event_btnDoUpdateActionPerformed
 
     /**
      * @param args the command line arguments
-     */    
+     */
     // Variables declaration - do not modify//GEN-BEGIN:variables
     private javax.swing.JButton btnClose;
     private javax.swing.JButton btnDoShare;
     private javax.swing.JButton btnDoUnshare;
     private javax.swing.JButton btnDoUpdate;
+    private javax.swing.JComboBox<String> cmbExpiryTime;
     private javax.swing.JComboBox<String> cmbPermission;
-    private javax.swing.JLabel jLabel1;
     private javax.swing.JLabel jLabel2;
     private javax.swing.JScrollPane jScrollPane1;
+    private javax.swing.JLabel lblFileName;
     private javax.swing.JTable sharedUsersTable;
     private javax.swing.JTextField txtTargetUsername;
     // End of variables declaration//GEN-END:variables

@@ -1,28 +1,25 @@
-/*
- * Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
- * Click nbfs://nbhost/SystemFileSystem/Templates/GUIForms/JFrame.java to edit this template
- */
 package filestorageclient;
 
-import javax.swing.*;
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
-import javax.swing.SwingWorker;
+import java.util.logging.Level;
 import java.util.logging.Logger;
+import javax.swing.JFrame;
+import javax.swing.JOptionPane;
+import javax.swing.SwingWorker;
 
+/**
+ * Giao diện đăng ký tài khoản mới.
+ */
 public class frmRegister extends javax.swing.JFrame {
 
-    // LẤY INSTANCE SINGLETON ---
-    private final ClientSocketManager clientManager = ClientSocketManager.getInstance();    
+    private final ClientSocketManager clientManager = ClientSocketManager.getInstance();
     private final JFrame parentForm;
     private static final Logger logger = Logger.getLogger(frmRegister.class.getName());
 
     public frmRegister(JFrame parentForm) {
         this.parentForm = parentForm;
-
         initComponents();
         this.setLocationRelativeTo(null);
-        this.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
+        this.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE); // Chỉ đóng cửa sổ này
     }
 
     /**
@@ -140,8 +137,7 @@ public class frmRegister extends javax.swing.JFrame {
     }// </editor-fold>//GEN-END:initComponents
 
     /**
-     * Logic xử lý chức năng Đăng ký. Thực hiện kiểm tra dữ liệu đầu vào và gửi
-     * yêu cầu Đăng ký đến Server qua SwingWorker.
+     * Xử lý logic khi người dùng nhấn nút Đăng ký.
      */
     private void handleRegister() {
         String username = txtUsername.getText().trim();
@@ -149,92 +145,79 @@ public class frmRegister extends javax.swing.JFrame {
         String confirmPassword = new String(txtConfirmPassword.getPassword());
         String email = txtEmail.getText().trim();
 
-        // 1. Kiểm tra dữ liệu đầu vào (Validation)
+        // 1. Kiểm tra dữ liệu đầu vào phía client
         if (username.isEmpty() || password.isEmpty() || confirmPassword.isEmpty() || email.isEmpty()) {
             JOptionPane.showMessageDialog(this, "Vui lòng nhập đầy đủ thông tin.", "Lỗi", JOptionPane.WARNING_MESSAGE);
             return;
         }
-
         if (!password.equals(confirmPassword)) {
             JOptionPane.showMessageDialog(this, "Mật khẩu xác nhận không khớp.", "Lỗi Mật khẩu", JOptionPane.ERROR_MESSAGE);
             txtPassword.setText("");
             txtConfirmPassword.setText("");
             return;
         }
-
         if (!email.contains("@") || email.length() < 5) {
             JOptionPane.showMessageDialog(this, "Email không hợp lệ.", "Lỗi Email", JOptionPane.ERROR_MESSAGE);
             return;
         }
 
-        // 2. Chuyển sang SwingWorker để Đăng ký
-        btnRegister.setEnabled(false); // Vô hiệu hóa nút trên EDT
+        btnRegister.setEnabled(false);
+        btnCancel.setEnabled(false);
 
+        // 2. Thực hiện tác vụ đăng ký trong luồng nền
         new SwingWorker<String, Void>() {
             @Override
-            protected String doInBackground() throws Exception {
-                // Thao tác mạng chỉ chạy ở luồng nền 
+            protected String doInBackground() {
                 return clientManager.register(username, password, email);
             }
 
             @Override
             protected void done() {
                 try {
-                    // Xử lý phản hồi trên EDT
                     String result = get();
-
                     switch (result) {
                         case "REGISTER_SUCCESS":
                             JOptionPane.showMessageDialog(frmRegister.this, "Đăng ký thành công! Bạn có thể đăng nhập ngay.", "Thành công", JOptionPane.INFORMATION_MESSAGE);
-                            // Tự động chuyển về form Login
-                            parentForm.setVisible(true);
-                            frmRegister.this.dispose();
+                            closeForm();
                             break;
-
                         case "REGISTER_FAIL_USERNAME_EXIST":
                             JOptionPane.showMessageDialog(frmRegister.this, "Tên đăng nhập này đã có người sử dụng. Vui lòng chọn tên khác.", "Lỗi Đăng ký", JOptionPane.ERROR_MESSAGE);
                             txtUsername.requestFocus();
                             break;
-
                         case "REGISTER_FAIL_EMAIL_EXIST":
-                            JOptionPane.showMessageDialog(frmRegister.this, "Địa chỉ Email này đã được sử dụng. Vui lòng sử dụng Email khác.", "Lỗi Đăng ký", JOptionPane.ERROR_MESSAGE);
+                            JOptionPane.showMessageDialog(frmRegister.this, "Địa chỉ Email này đã được sử dụng.", "Lỗi Đăng ký", JOptionPane.ERROR_MESSAGE);
                             txtEmail.requestFocus();
                             break;
-
-                        case "REGISTER_FAIL_DB_ERROR":
-                            JOptionPane.showMessageDialog(frmRegister.this, "Đăng ký thất bại do lỗi CSDL nội bộ. Vui lòng thử lại sau.", "Lỗi Hệ thống", JOptionPane.ERROR_MESSAGE);
-                            break;
-
-                        case "ERROR_CONNECTION":
-                            JOptionPane.showMessageDialog(frmRegister.this, "Lỗi kết nối Server. Vui lòng kiểm tra lại kết nối mạng.", "Lỗi Mạng", JOptionPane.ERROR_MESSAGE);
-                            clientManager.connect(); // Thử kết nối lại
-                            break;
-
-                        case "ERROR_IO":
-                            JOptionPane.showMessageDialog(frmRegister.this, "Lỗi giao tiếp với Server. Vui lòng thử lại.", "Lỗi I/O", JOptionPane.ERROR_MESSAGE);
-                            break;
-
                         default:
-                            // Bắt lỗi chung hoặc mã lỗi không xác định
-                            JOptionPane.showMessageDialog(frmRegister.this, "Đăng ký thất bại. Lỗi không xác định: " + result, "Lỗi", JOptionPane.ERROR_MESSAGE);
+                            JOptionPane.showMessageDialog(frmRegister.this, "Đăng ký thất bại: " + result, "Lỗi", JOptionPane.ERROR_MESSAGE);
                             break;
                     }
                 } catch (Exception ex) {
-                    logger.log(java.util.logging.Level.SEVERE, "Lỗi SwingWorker khi Đăng ký", ex);
+                    logger.log(Level.SEVERE, "Lỗi SwingWorker khi đăng ký", ex);
                     JOptionPane.showMessageDialog(frmRegister.this, "Lỗi không xác định: " + ex.getMessage(), "Lỗi", JOptionPane.ERROR_MESSAGE);
                 } finally {
-                    btnRegister.setEnabled(true); // Bật lại nút trong finally
+                    btnRegister.setEnabled(true);
+                    btnCancel.setEnabled(true);
                 }
             }
-        }.execute(); // Chạy SwingWorker
+        }.execute();
+    }
+
+    /**
+     * Đóng form hiện tại và hiển thị lại form cha.
+     */
+    private void closeForm() {
+        if (parentForm != null) {
+            parentForm.setVisible(true);
+        }
+        this.dispose();
     }
     private void btnRegisterActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnRegisterActionPerformed
         handleRegister();
     }//GEN-LAST:event_btnRegisterActionPerformed
 
     private void btnCancelActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnCancelActionPerformed
-        this.parentForm.setVisible(true); // Hiển thị lại form Login
-        this.dispose();                   // Đóng form Đăng ký hiện tại
+        closeForm();
     }//GEN-LAST:event_btnCancelActionPerformed
 
     /**

@@ -1,27 +1,58 @@
-/*
- * Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
- * Click nbfs://nbhost/SystemFileSystem/Templates/Classes/Class.java to edit this template
- */
 package filestorageserver.model;
 
-import java.sql.Timestamp; // Sử dụng Timestamp cho các cột DATETIME
+import java.sql.Timestamp;
 
+/**
+ * Đại diện cho một đối tượng Người dùng (User), ánh xạ tới bảng 'users' trong
+ * cơ sở dữ liệu.
+ */
 public class User {
 
-    // Tên thuộc tính phải khớp với tên cột trong CSDL (hoặc tuân theo quy ước Java camelCase)
+    /**
+     * ID duy nhất của người dùng, tương ứng với cột 'user_id'.
+     */
     private int userId;
-    private String username;
-    private String passwordHash; // Cần thiết để lấy hash ra so sánh khi đăng nhập
-    private String email;
-    private Timestamp createdAt;
-    private Timestamp lastLogin;
-    private boolean isActive; // Dùng boolean thay cho TINYINT(1) trong Java
 
-    // Constructor mặc định
+    /**
+     * Tên đăng nhập của người dùng, tương ứng với cột 'username'.
+     */
+    private String username;
+
+    /**
+     * Chuỗi mật khẩu đã được băm bằng BCrypt, tương ứng với cột
+     * 'password_hash'.
+     */
+    private String passwordHash;
+
+    /**
+     * Địa chỉ email của người dùng, tương ứng với cột 'email'.
+     */
+    private String email;
+
+    /**
+     * Thời điểm tài khoản được tạo, tương ứng với cột 'created_at'.
+     */
+    private Timestamp createdAt;
+
+    /**
+     * Thời điểm đăng nhập cuối cùng, tương ứng với cột 'last_login'.
+     */
+    private Timestamp lastLogin;
+
+    /**
+     * Trạng thái hoạt động của tài khoản, tương ứng với cột 'is_active'.
+     */
+    private boolean isActive;
+
+    /**
+     * Constructor mặc định.
+     */
     public User() {
     }
 
-    // Constructor đầy đủ (có thể dùng khi tạo user mới)
+    /**
+     * Constructor đầy đủ để khởi tạo một đối tượng User với tất cả thuộc tính.
+     */
     public User(int userId, String username, String passwordHash, String email, Timestamp createdAt, Timestamp lastLogin, boolean isActive) {
         this.userId = userId;
         this.username = username;
@@ -32,8 +63,7 @@ public class User {
         this.isActive = isActive;
     }
 
-    // --- GETTERS & SETTERS (RẤT QUAN TRỌNG) ---
-    // NetBeans có thể tự động tạo bằng cách nhấn chuột phải -> Insert Code -> Getter and Setter
+    //<editor-fold defaultstate="collapsed" desc="Getters and Setters">
     public int getUserId() {
         return userId;
     }
@@ -50,7 +80,6 @@ public class User {
         this.username = username;
     }
 
-    // Bắt buộc phải có getter cho passwordHash để UserDAO có thể lấy ra so sánh!
     public String getPasswordHash() {
         return passwordHash;
     }
@@ -90,4 +119,5 @@ public class User {
     public void setActive(boolean isActive) {
         this.isActive = isActive;
     }
+    //</editor-fold>
 }

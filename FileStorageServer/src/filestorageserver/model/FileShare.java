@@ -1,25 +1,59 @@
-/*
- * Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
- * Click nbfs://nbhost/SystemFileSystem/Templates/Classes/Class.java to edit this template
- */
 package filestorageserver.model;
 
 import java.sql.Timestamp;
 
+/**
+ * Đại diện cho một bản ghi chia sẻ file, ánh xạ tới bảng 'file_shares' trong
+ * CSDL.
+ */
 public class FileShare {
+
+    /**
+     * ID duy nhất của lượt chia sẻ, tương ứng với cột 'share_id'.
+     */
     private int shareId;
+
+    /**
+     * ID của file được chia sẻ, tương ứng với cột 'file_id'.
+     */
     private int fileId;
-    private int sharedWithUserId; // Người nhận chia sẻ
-    private int sharedByUserId;   // Chủ sở hữu/Người chia sẻ
-    private int permissionLevel;  // Mức quyền: 1 (Read Only), 2 (Read/Write)
+
+    /**
+     * ID của người dùng được nhận chia sẻ, tương ứng với cột
+     * 'shared_with_user_id'.
+     */
+    private int sharedWithUserId;
+
+    /**
+     * ID của người dùng thực hiện chia sẻ (chủ sở hữu), tương ứng với cột
+     * 'shared_by_user_id'.
+     */
+    private int sharedByUserId;
+
+    /**
+     * Mức độ quyền hạn (ví dụ: 1 = chỉ đọc), tương ứng với cột
+     * 'permission_level'.
+     */
+    private int permissionLevel;
+
+    /**
+     * Thời điểm bắt đầu chia sẻ, tương ứng với cột 'shared_at'.
+     */
     private Timestamp sharedAt;
 
-    // Constructor (Bạn có thể tùy chỉnh nếu cần)
+    /**
+     * BỔ SUNG: Thời điểm lượt chia sẻ hết hạn, tương ứng với cột
+     * 'share_expiry'. Có thể là null nếu chia sẻ không có thời hạn.
+     */
+    private Timestamp shareExpiry;
+
+    /**
+     * Constructor mặc định.
+     */
     public FileShare() {
     }
 
-    // Getters and Setters
-
+    //<editor-fold defaultstate="collapsed" desc="Getters and Setters">
     public int getShareId() {
         return shareId;
     }
@@ -67,4 +101,13 @@ public class FileShare {
     public void setSharedAt(Timestamp sharedAt) {
         this.sharedAt = sharedAt;
     }
+
+    public Timestamp getShareExpiry() {
+        return shareExpiry;
+    }
+
+    public void setShareExpiry(Timestamp shareExpiry) {
+        this.shareExpiry = shareExpiry;
+    }
+    //</editor-fold>
 }

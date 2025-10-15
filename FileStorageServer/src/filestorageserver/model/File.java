@@ -1,49 +1,78 @@
-/*
- * Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
- * Click nbfs://nbhost/SystemFileSystem/Templates/Classes/Class.java to edit this template
- */
 package filestorageserver.model;
 
 import java.sql.Timestamp;
 
+/**
+ * Đại diện cho một đối tượng File, ánh xạ tới bảng 'files' trong cơ sở dữ liệu.
+ */
 public class File {
 
-    // Tương ứng với cột file_id (Khóa chính)
+    /**
+     * ID duy nhất của file, tương ứng với cột 'file_id'.
+     */
     private int fileId;
 
-    // Tương ứng với cột owner_id (Khóa ngoại trỏ đến Users.user_id)
+    /**
+     * ID của người dùng sở hữu file, tương ứng với cột 'owner_id'.
+     */
     private int ownerId;
 
-    // Tên file gốc mà người dùng nhìn thấy
+    /**
+     * Tên file gốc mà người dùng nhìn thấy, tương ứng với cột 'file_name'.
+     */
     private String fileName;
 
-    // Đường dẫn vật lý của file trên Server (ví dụ: C:/storage/user_1/file_xyz.dat)
+    /**
+     * Đường dẫn vật lý của file trên Server, tương ứng với cột 'file_path'.
+     */
     private String filePath;
 
-    // Kích thước file (bytes)
+    /**
+     * Kích thước file (bytes), tương ứng với cột 'file_size'.
+     */
     private long fileSize;
 
-    // Kiểu file MIME (ví dụ: image/png, application/pdf)
+    /**
+     * Kiểu file MIME (ví dụ: image/png), tương ứng với cột 'mime_type'.
+     */
     private String fileType;
 
-    // Thời gian upload (created_at)
+    /**
+     * Thời điểm file được tải lên, tương ứng với cột 'created_at'.
+     */
     private Timestamp uploadedAt;
 
-    // Thời gian sửa đổi cuối cùng (last_modified)
+    /**
+     * Thời điểm file được sửa đổi lần cuối, tương ứng với cột 'last_modified'.
+     */
     private Timestamp lastModified;
 
-    // Trạng thái chia sẻ (1: Shared, 0: Private)
+    /**
+     * Cờ đánh dấu file này có đang được chia sẻ hay không, tương ứng với cột
+     * 'is_shared'.
+     */
     private boolean isShared;
 
+    /**
+     * Thuộc tính logic (không có trong CSDL) để xác định file này có phải được
+     * chia sẻ cho người dùng hiện tại hay không.
+     */
     private boolean isSharedToMe;
 
+    /**
+     * Thuộc tính logic (không có trong CSDL) để lưu tên người đã chia sẻ file.
+     */
     private String sharerName;
 
-    // --- CONSTRUCTORS ---
+    /**
+     * Constructor mặc định.
+     */
     public File() {
     }
 
-    // Constructor khi lấy dữ liệu từ CSDL
+    /**
+     * Constructor đầy đủ để khởi tạo một đối tượng File.
+     */
     public File(int fileId, int ownerId, String fileName, String filePath, long fileSize, String fileType, Timestamp uploadedAt, Timestamp lastModified, boolean isShared) {
         this.fileId = fileId;
         this.ownerId = ownerId;
@@ -56,7 +85,7 @@ public class File {
         this.isShared = isShared;
     }
 
-    // --- GETTERS & SETTERS ---
+    //<editor-fold defaultstate="collapsed" desc="Getters and Setters">
     public int getFileId() {
         return fileId;
     }
@@ -144,4 +173,5 @@ public class File {
     public void setSharerName(String sharerName) {
         this.sharerName = sharerName;
     }
+    //</editor-fold>
 }

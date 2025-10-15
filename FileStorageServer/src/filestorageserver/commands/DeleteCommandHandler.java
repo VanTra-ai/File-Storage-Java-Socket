@@ -1,7 +1,3 @@
-/*
- * Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
- * Click nbfs://nbhost/SystemFileSystem/Templates/Classes/Class.java to edit this template
- */
 package filestorageserver.commands;
 
 import filestorageserver.ClientSession;
@@ -11,6 +7,9 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 
+/**
+ * Xử lý logic cho lệnh xóa file (CMD_DELETE).
+ */
 public class DeleteCommandHandler implements CommandHandler {
 
     @Override
@@ -23,6 +22,8 @@ public class DeleteCommandHandler implements CommandHandler {
         try {
             int fileId = dis.readInt();
             FileDAO fileDAO = new FileDAO();
+
+            // Lấy metadata file để kiểm tra sự tồn tại và quyền truy cập
             File fileMetadata = fileDAO.getFileForDownload(fileId, session.getCurrentUserId());
 
             if (fileMetadata == null) {
@@ -30,34 +31,41 @@ public class DeleteCommandHandler implements CommandHandler {
                 return;
             }
 
+            // Rất quan trọng: Chỉ chủ sở hữu mới có quyền xóa file
             if (fileMetadata.getOwnerId() != session.getCurrentUserId()) {
                 dos.writeUTF("DELETE_FAIL_AUTH");
                 return;
             }
 
             java.io.File fileToDelete = new java.io.File(fileMetadata.getFilePath());
-            boolean physicalDeleted = true;
+            boolean physicalFileDeleted = true;
 
+            // Bước 1: Xóa file vật lý trên ổ đĩa trước
             if (fileToDelete.exists()) {
-                physicalDeleted = fileToDelete.delete();
+                physicalFileDeleted = fileToDelete.delete();
             }
 
-            if (physicalDeleted) {
+            if (physicalFileDeleted) {
+                // Bước 2: Nếu xóa file vật lý thành công, tiến hành xóa metadata trong CSDL
                 boolean metadataDeleted = fileDAO.deleteFileMetadata(fileId, session.getCurrentUserId());
+
                 if (metadataDeleted) {
                     dos.writeUTF("DELETE_SUCCESS");
                     System.out.println("User " + session.getCurrentUserId() + " đã xóa thành công File ID: " + fileId);
                 } else {
+                    // Trường hợp hiếm gặp nhưng nguy hiểm: file vật lý đã mất nhưng metadata vẫn còn
                     dos.writeUTF("DELETE_FAIL_DB_PHYSICAL_GONE");
                     System.err.println("LỖI KHÔNG ĐỒNG BỘ: Xóa file vật lý thành công nhưng xóa CSDL thất bại cho File ID: " + fileId);
                 }
             } else {
+                // Nếu xóa file vật lý thất bại, không thực hiện xóa CSDL và báo lỗi
                 dos.writeUTF("DELETE_FAIL_PHYSICAL");
-                System.err.println("Lỗi xóa file vật lý cho File ID: " + fileId);
+                System.err.println("Lỗi xóa file vật lý cho File ID: " + fileId + ". Metadata vẫn còn trong CSDL.");
             }
         } catch (Exception e) {
-            dos.writeUTF("DELETE_FAIL_INTERNAL");
             System.err.println("Lỗi nội bộ khi xóa file: " + e.getMessage());
+            e.printStackTrace();
+            dos.writeUTF("DELETE_FAIL_INTERNAL");
         }
     }
 }

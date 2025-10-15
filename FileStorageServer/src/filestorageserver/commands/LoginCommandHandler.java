@@ -1,7 +1,3 @@
-/*
- * Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
- * Click nbfs://nbhost/SystemFileSystem/Templates/Classes/Class.java to edit this template
- */
 package filestorageserver.commands;
 
 import filestorageserver.ClientSession;
@@ -18,27 +14,35 @@ public class LoginCommandHandler implements CommandHandler {
 
     @Override
     public void handle(ClientSession session, DataInputStream dis, DataOutputStream dos) throws IOException {
-        String username = dis.readUTF();
-        String password = dis.readUTF();
+        try {
+            String username = dis.readUTF();
+            String password = dis.readUTF();
 
-        // Lưu ý: UserDAO đang được tạo mới ở đây.
-        // Để tối ưu hơn, ta có thể áp dụng Dependency Injection.
-        UserDAO userDAO = new UserDAO();
-        User user = userDAO.login(username, password);
+            UserDAO userDAO = new UserDAO();
+            User user = userDAO.login(username, password);
 
-        if (user != null) {
-            // Cập nhật thông tin vào session
-            session.setCurrentUserId(user.getUserId());
-            session.setCurrentUsername(user.getUsername());
-            
-            // Gửi phản hồi thành công
-            dos.writeUTF("LOGIN_SUCCESS");
-            dos.writeInt(session.getCurrentUserId());
-            dos.writeUTF(session.getCurrentUsername());
-            dos.flush();
-            System.out.println("Đăng nhập thành công: " + session.getCurrentUsername());
-        } else {
-            dos.writeUTF("LOGIN_FAIL");
+            if (user != null) {
+                // Cập nhật thông tin người dùng vào phiên làm việc
+                session.setCurrentUserId(user.getUserId());
+                session.setCurrentUsername(user.getUsername());
+
+                // Gửi phản hồi thành công về cho client
+                dos.writeUTF("LOGIN_SUCCESS");
+                dos.writeInt(session.getCurrentUserId());
+                dos.writeUTF(session.getCurrentUsername());
+                dos.flush();
+                System.out.println("Đăng nhập thành công: " + session.getCurrentUsername());
+            } else {
+                dos.writeUTF("LOGIN_FAIL");
+            }
+        } catch (IOException e) {
+            System.err.println("Lỗi I/O khi xử lý đăng nhập: " + e.getMessage());
+            // Ném lại ngoại lệ để ClientHandler có thể xử lý việc đóng kết nối
+            throw e;
+        } catch (Exception e) {
+            System.err.println("Lỗi không xác định khi xử lý đăng nhập: " + e.getMessage());
+            e.printStackTrace();
+            dos.writeUTF("LOGIN_FAIL_SERVER_ERROR");
         }
     }
 }
