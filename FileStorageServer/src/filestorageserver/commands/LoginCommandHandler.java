@@ -6,6 +6,7 @@ import filestorageserver.model.User;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import filestorageserver.ServerActivityListener;
 
 /**
  * Xử lý logic cho lệnh đăng nhập (CMD_LOGIN).
@@ -13,7 +14,7 @@ import java.io.IOException;
 public class LoginCommandHandler implements CommandHandler {
 
     @Override
-    public void handle(ClientSession session, DataInputStream dis, DataOutputStream dos) throws IOException {
+    public void handle(ClientSession session, DataInputStream dis, DataOutputStream dos, ServerActivityListener listener) throws IOException {
         try {
             String username = dis.readUTF();
             String password = dis.readUTF();
@@ -25,6 +26,9 @@ public class LoginCommandHandler implements CommandHandler {
                 // Cập nhật thông tin người dùng vào phiên làm việc
                 session.setCurrentUserId(user.getUserId());
                 session.setCurrentUsername(user.getUsername());
+                
+                // --- THÔNG BÁO SỰ KIỆN ĐĂNG NHẬP THÀNH CÔNG ---
+                listener.onUserLoggedIn(session.getHandler(), session.getCurrentUsername());
 
                 // Gửi phản hồi thành công về cho client
                 dos.writeUTF("LOGIN_SUCCESS");

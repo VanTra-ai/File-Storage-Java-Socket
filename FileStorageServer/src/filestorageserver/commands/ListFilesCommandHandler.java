@@ -7,6 +7,7 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.util.List;
+import filestorageserver.ServerActivityListener;
 
 /**
  * Xử lý logic cho lệnh yêu cầu danh sách file (CMD_LISTFILES).
@@ -14,7 +15,7 @@ import java.util.List;
 public class ListFilesCommandHandler implements CommandHandler {
 
     @Override
-    public void handle(ClientSession session, DataInputStream dis, DataOutputStream dos) throws IOException {
+    public void handle(ClientSession session, DataInputStream dis, DataOutputStream dos, ServerActivityListener listener) throws IOException {
         if (!session.isLoggedIn()) {
             dos.writeUTF("ERROR_NOT_LOGGED_IN");
             return;

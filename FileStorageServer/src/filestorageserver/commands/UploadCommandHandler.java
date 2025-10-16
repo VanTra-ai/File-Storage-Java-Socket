@@ -8,6 +8,7 @@ import java.io.DataOutputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.UUID;
+import filestorageserver.ServerActivityListener;
 
 /**
  * Xử lý logic cho lệnh tải file lên server (CMD_UPLOAD).
@@ -22,7 +23,7 @@ public class UploadCommandHandler implements CommandHandler {
     private static final String SERVER_STORAGE_ROOT = "I:/FileStorageRoot/";
 
     @Override
-    public void handle(ClientSession session, DataInputStream dis, DataOutputStream dos) throws IOException {
+    public void handle(ClientSession session, DataInputStream dis, DataOutputStream dos, ServerActivityListener listener) throws IOException {
         if (!session.isLoggedIn()) {
             dos.writeUTF("ERROR_NOT_LOGGED_IN");
             return;
@@ -79,6 +80,8 @@ public class UploadCommandHandler implements CommandHandler {
                 dos.writeUTF("UPLOAD_SUCCESS");
                 dos.writeInt(fileId);
                 System.out.println("User " + session.getCurrentUsername() + " đã upload thành công: " + originalFileName);
+                // --- THÔNG BÁO SỰ KIỆN UPLOAD THÀNH CÔNG ---
+                listener.onFileUploaded(session.getCurrentUsername(), originalFileName);
             } else {
                 // Nếu không lưu được vào CSDL, xóa file vật lý đã tạo để tránh rác
                 dos.writeUTF("UPLOAD_FAIL_DB");

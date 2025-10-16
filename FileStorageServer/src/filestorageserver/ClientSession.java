@@ -8,6 +8,7 @@ public class ClientSession {
 
     private int currentUserId = -1;
     private String currentUsername = null;
+    private final ClientHandler handler;
 
     /**
      * Lấy ID của người dùng hiện tại đang đăng nhập.
@@ -42,5 +43,13 @@ public class ClientSession {
      */
     public boolean isLoggedIn() {
         return this.currentUserId != -1;
+    }
+
+    public ClientSession(ClientHandler handler) {
+        this.handler = handler;
+    }
+
+    public ClientHandler getHandler() {
+        return handler;
     }
 }

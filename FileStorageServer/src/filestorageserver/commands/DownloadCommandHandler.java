@@ -7,6 +7,7 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.FileInputStream;
 import java.io.IOException;
+import filestorageserver.ServerActivityListener;
 
 /**
  * Xử lý logic cho lệnh tải file xuống (CMD_DOWNLOAD).
@@ -14,7 +15,7 @@ import java.io.IOException;
 public class DownloadCommandHandler implements CommandHandler {
 
     @Override
-    public void handle(ClientSession session, DataInputStream dis, DataOutputStream dos) throws IOException {
+    public void handle(ClientSession session, DataInputStream dis, DataOutputStream dos, ServerActivityListener listener) throws IOException {
         if (!session.isLoggedIn()) {
             dos.writeUTF("ERROR_NOT_LOGGED_IN");
             return;
@@ -55,7 +56,8 @@ public class DownloadCommandHandler implements CommandHandler {
             }
             dos.flush();
             System.out.println("User " + session.getCurrentUserId() + " đã download thành công: " + fileMetadata.getFileName());
-
+            // --- THÔNG BÁO SỰ KIỆN DOWNLOAD THÀNH CÔNG ---
+            listener.onFileDownloaded(session.getCurrentUsername(), fileMetadata.getFileName());
         } catch (IOException e) {
             // Lỗi này thường xảy ra nếu client ngắt kết nối giữa chừng
             System.err.println("Lỗi I/O khi xử lý download cho user " + session.getCurrentUsername() + ": " + e.getMessage());

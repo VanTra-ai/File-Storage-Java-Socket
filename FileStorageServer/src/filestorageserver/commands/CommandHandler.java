@@ -1,6 +1,7 @@
 package filestorageserver.commands;
 
 import filestorageserver.ClientSession;
+import filestorageserver.ServerActivityListener;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
@@ -20,5 +21,5 @@ public interface CommandHandler {
      * @param dos Stream để gửi dữ liệu phản hồi về client.
      * @throws IOException khi có lỗi giao tiếp mạng xảy ra.
      */
-    void handle(ClientSession session, DataInputStream dis, DataOutputStream dos) throws IOException;
+    void handle(ClientSession session, DataInputStream dis, DataOutputStream dos, ServerActivityListener listener) throws IOException;
 }

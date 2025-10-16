@@ -5,6 +5,7 @@ import filestorageserver.UserDAO;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import filestorageserver.ServerActivityListener;
 
 /**
  * Xử lý logic cho lệnh đăng ký tài khoản mới (CMD_REGISTER).
@@ -12,7 +13,7 @@ import java.io.IOException;
 public class RegisterCommandHandler implements CommandHandler {
 
     @Override
-    public void handle(ClientSession session, DataInputStream dis, DataOutputStream dos) throws IOException {
+    public void handle(ClientSession session, DataInputStream dis, DataOutputStream dos, ServerActivityListener listener) throws IOException {
         try {
             String username = dis.readUTF();
             String password = dis.readUTF();
@@ -27,6 +28,7 @@ public class RegisterCommandHandler implements CommandHandler {
             // Ghi log trên server để theo dõi
             if (result.equals("REGISTER_SUCCESS")) {
                 System.out.println("Đăng ký thành công User: " + username);
+                listener.onUserRegistered(username);
             } else if (result.equals("REGISTER_FAIL_USERNAME_EXIST")) {
                 System.err.println("Đăng ký thất bại: Username '" + username + "' đã tồn tại.");
             } else if (result.equals("REGISTER_FAIL_EMAIL_EXIST")) {

@@ -9,6 +9,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import javax.net.ServerSocketFactory;
 import javax.net.ssl.SSLServerSocketFactory;
+import javax.swing.SwingUtilities;
 
 /**
  * Lớp chính của Server, chịu trách nhiệm khởi động, lắng nghe kết nối SSL, quản
@@ -22,47 +23,47 @@ public class FileServer {
     private static final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
 
     /**
-     * Phương thức chính khởi chạy toàn bộ server.
+     * Phương thức chính khởi chạy toàn bộ server và giao diện Dashboard.
      */
     public static void main(String[] args) {
+        // Tạo và hiển thị Dashboard trên Luồng Giao diện Đồ họa (EDT)
+        DashboardFrame dashboard = new DashboardFrame();
+        SwingUtilities.invokeLater(() -> {
+            dashboard.setVisible(true);
+        });
+
         // LƯU Ý: Các giá trị này nên được đọc từ một file cấu hình bên ngoài.
         String absoluteKeyStorePath = "C:\\Users\\Admin\\OneDrive\\Documents\\NetBeansProjects\\File-Storage-Java-Socket\\Drivers\\SSL\\server.jks";
         String keyStorePassword = "123456";
 
+        System.setProperty("javax.net.ssl.keyStore", absoluteKeyStorePath);
+        System.setProperty("javax.net.ssl.keyStorePassword", keyStorePassword);
+
         try {
-            // Thiết lập các thuộc tính hệ thống cho SSL KeyStore
-            System.setProperty("javax.net.ssl.keyStore", absoluteKeyStorePath);
-            System.setProperty("javax.net.ssl.keyStorePassword", keyStorePassword);
-
             System.out.println("--- FILE STORAGE SERVER ---");
-
-            // Khởi động tác vụ nền để dọn dẹp các lượt chia sẻ hết hạn
-            startExpiredShareCleanupTask();
+            startExpiredShareCleanupTask(dashboard); // Truyền dashboard vào để ghi log
 
             ServerSocketFactory ssf = SSLServerSocketFactory.getDefault();
             try (ServerSocket serverSocket = ssf.createServerSocket(PORT)) {
-                System.out.println("Server đang lắng nghe kết nối SSL tại cổng: " + PORT);
+                dashboard.addLogMessage("Server is listening on SSL port: " + PORT);
 
-                // Vòng lặp vô tận để chấp nhận các kết nối mới từ client
                 while (true) {
                     Socket clientSocket = serverSocket.accept();
-                    System.out.println("Client mới kết nối từ: " + clientSocket.getInetAddress().getHostAddress());
-
-                    // Giao mỗi client cho một luồng trong pool để xử lý
-                    clientProcessingPool.execute(new ClientHandler(clientSocket));
+                    // Giao mỗi client cho một luồng xử lý, và truyền Dashboard vào làm "Người lắng nghe"
+                    clientProcessingPool.execute(new ClientHandler(clientSocket, dashboard));
                 }
             }
         } catch (IOException e) {
-            System.err.println("Không thể khởi động Server: " + e.getMessage());
+            dashboard.addLogMessage("FATAL ERROR: Could not start server: " + e.getMessage());
             e.printStackTrace();
         }
     }
 
     /**
      * Khởi động và lập lịch cho tác vụ chạy nền để xóa các bản ghi chia sẻ đã
-     * hết hạn trong CSDL.
+     * hết hạn.
      */
-    private static void startExpiredShareCleanupTask() {
+    private static void startExpiredShareCleanupTask(DashboardFrame dashboard) {
         Runnable cleanupTask = () -> {
             try {
                 new FileDAO().deleteExpiredShares();
@@ -72,8 +73,7 @@ public class FileServer {
             }
         };
 
-        // Lập lịch: Chạy lần đầu sau 10 giây, sau đó lặp lại mỗi 30 giây.
         scheduler.scheduleAtFixedRate(cleanupTask, 10, 30, TimeUnit.SECONDS);
-        System.out.println("Đã khởi động tác vụ dọn dẹp (chạy lần đầu sau 10s, lặp lại mỗi 30s).");
+        dashboard.addLogMessage("Cleanup task for expired shares has been scheduled.");
     }
 }
