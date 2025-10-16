@@ -1,185 +1,191 @@
-# 📂 File Storage System - Java Socket & MySQL (Version 2.0)
+# 📂 Hệ thống Lưu trữ File - Java Socket & MySQL (Version 3.0)
 
-Đây là một ứng dụng quản lý lưu trữ file hoàn chỉnh, được phát triển bằng **Java**, sử dụng **Socket (TCP)** cho giao tiếp Client-Server và **MySQL** để quản lý metadata (thông tin file và tài khoản người dùng).
+Đây là một ứng dụng Client-Server hoàn chỉnh được xây dựng bằng **Java**, mô phỏng một hệ thống lưu trữ file trên đám mây. Dự án sử dụng **Java Socket** với mã hóa **SSL/TLS** cho giao tiếp mạng, **Java Swing** cho giao diện người dùng, và **MySQL** để quản lý metadata.
+
+!(https://i.imgur.com/a0e1a5.png)
 
 ---
 
-## 🚀 Tính năng Chính (Version 2.0: Sharing & Authorization)
+## 🚀 Tính năng Chính (Version 3.0: Dashboard & Hoàn thiện)
 
-Bản cập nhật này tập trung vào việc triển khai đầy đủ tính năng chia sẻ quyền truy cập, nâng cao khả năng quản lý file và bảo mật.
+Phiên bản này giới thiệu Giao diện Quản lý Server (Dashboard) và hoàn thiện các tính năng cốt lõi, mang lại một hệ thống mạnh mẽ và dễ kiểm soát.
 
-- **Xác thực Người dùng An toàn:** Đăng ký và Đăng nhập sử dụng **Bcrypt** để băm mật khẩu và Salting.
-- **Quản lý File Cơ bản:** Upload, Download, Delete file khỏi Server.
-- **Danh sách File Tổng hợp:** Hiển thị **cả file sở hữu và file được chia sẻ** với người dùng, bao gồm thông tin `Status` và `Sharer`.
-- **Quản lý Quyền Chia sẻ (Authorization):**
-  - **Chia sẻ File (`SHARE`):** Chủ sở hữu cấp quyền truy cập (Download Only) cho người dùng khác qua Username.
-  - **Hủy Chia sẻ (`UNSHARE`):** Chủ sở hữu thu hồi quyền đã cấp.
-  - **Cập nhật Quyền (`CHANGE_PERM`):** Thay đổi mức quyền truy cập cho người được chia sẻ.
-  - **Liệt kê người được chia sẻ (`SHARE_LIST`):** Chỉ chủ sở hữu mới có thể xem danh sách chi tiết những người đang có quyền truy cập file.
+- **Bảo mật Toàn diện:**
+
+  - **Mã hóa Vận chuyển:** Mọi dữ liệu giữa Client và Server đều được mã hóa bằng **SSL/TLS**.
+  - **Mã hóa Mật khẩu:** Mật khẩu người dùng được băm và salt an toàn bằng thư viện **Bcrypt** trước khi lưu vào CSDL.
+
+- **Quản lý Người dùng & File:**
+
+  - Đăng ký, Đăng nhập và Đăng xuất tài khoản.
+  - Tải file lên (Upload), tải file xuống (Download), và Xóa file cá nhân.
+
+- **Hệ thống Chia sẻ Nâng cao:**
+
+  - Chia sẻ file cho người dùng khác qua Username.
+  - **Chia sẻ có thời hạn:** Thiết lập thời gian hết hạn cho lượt chia sẻ (ví dụ: 1 phút, 5 phút), quyền truy cập sẽ được **tự động thu hồi** bởi Server.
+  - Cập nhật quyền và thời hạn chia sẻ.
+  - Hủy chia sẻ (Unshare).
+
+- **🖥️ Giao diện Quản lý Server (Dashboard):**
+  - Hiển thị danh sách các client đang kết nối trong thời gian thực.
+  - Theo dõi trạng thái của từng client: IP, Tên tài khoản, Hoạt động hiện tại (`Uploading...`, `Downloading...`, `Idle`).
+  - Ghi lại (log) tất cả các sự kiện quan trọng: kết nối/ngắt kết nối, đăng nhập/đăng xuất, đăng ký, upload, download, xóa, và các thao tác chia sẻ.
 
 ---
 
 ## 🛠️ Công nghệ Sử dụng
 
-| Thành phần             | Công nghệ/Thư viện                  |
-| :--------------------- | :---------------------------------- |
-| **Ngôn ngữ Lập trình** | Java (JDK 17)                       |
-| **Giao tiếp**          | Java Socket (TCP)                   |
-| **Cơ sở dữ liệu**      | MySQL (hoặc MariaDB)                |
-| **Giao diện**          | Java Swing (NetBeans Form Designer) |
-| **Thư viện Database**  | `mysql-connector-j-8.3.0.jar`       |
-| **Bảo mật**            | `bcrypt-0.4.jar` (Mã hóa mật khẩu)  |
+| Thành phần          | Công nghệ / Thư viện              |
+| :------------------ | :-------------------------------- |
+| **Ngôn ngữ**        | Java (JDK 17+)                    |
+| **Giao diện**       | Java Swing (NetBeans GUI Builder) |
+| **Giao tiếp Mạng**  | Java Socket (TCP/IP qua SSL/TLS)  |
+| **Cơ sở dữ liệu**   | MySQL (hoặc MariaDB)              |
+| **Kết nối CSDL**    | JDBC (`mysql-connector-j`)        |
+| **Mã hóa Mật khẩu** | `jbcrypt`                         |
 
 ---
 
 ## ⚙️ Cấu trúc Dự án
 
-| Project                 | Package/Folder      | Vai trò Chính                          | File quan trọng                                                                                                                     |
-| :---------------------- | :------------------ | :------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------- |
-| **`FileStorageServer`** | `filestorageserver` | Logic Server, Socket, Database Access. | `FileServer.java` (Main), `ClientHandler.java` (Giao thức), **`FileDAO.java`** (Quản lý File & Chia sẻ), `UserDAO.java` (Xác thực). |
-| **`FileStorageClient`** | `filestorageclient` | Giao diện Người dùng, Logic gửi lệnh.  | `ClientSocketManager.java` (Giao tiếp Server), `frmMainClient.java`, **`frmShareFile.java`** (Quản lý Sharing UI).                  |
+Dự án được tổ chức theo kiến trúc Client-Server rõ ràng, áp dụng các mẫu thiết kế như **Singleton**, **Command Pattern**, và **Observer**.
+
+- **`FileStorageServer`** (Dự án Server)
+
+  - `filestorageserver`: Chứa các lớp lõi.
+    - `FileServer.java`: Điểm khởi chạy chính, quản lý kết nối và các tác vụ nền.
+    - `ClientHandler.java`: Bộ điều phối, nhận lệnh và giao việc.
+    - `DashboardFrame.java`: Giao diện quản lý, đóng vai trò "Người lắng nghe" sự kiện.
+    - `FileDAO.java` / `UserDAO.java`: Các lớp truy cập dữ liệu.
+  - `filestorageserver.commands`: Mỗi file là một lệnh riêng biệt (Command Pattern).
+  - `filestorageserver.model`: Các lớp POJO ánh xạ tới bảng CSDL.
+
+- **`FileStorageClient`** (Dự án Client)
+  - `filestorageclient`:
+    - `ClientSocketManager.java`: "Bộ não" của Client, quản lý kết nối và mọi giao tiếp với Server (Singleton Pattern).
+    - `frmLogin.java`, `frmMainClient.java`,...: Các lớp giao diện Swing.
 
 ---
 
-## 🔑 Thiết lập Cơ sở Dữ liệu
+## 🔑 Hướng dẫn Cài đặt và Chạy
 
-1.  **Tạo Database:** Tạo database có tên: **`file_storage_db`**.
-2.  **Tạo Bảng:** Thực thi toàn bộ đoạn mã SQL dưới đây để tạo ba bảng: **`users`**, **`files`**, và **`file_shares`**.
+### **Bước 0: Yêu cầu**
 
-### 2.1. Code SQL
+- JDK 17 hoặc mới hơn.
+- Apache NetBeans IDE.
+- XAMPP hoặc một hệ quản trị CSDL MySQL/MariaDB.
+
+### **Bước 1: Thiết lập Cơ sở dữ liệu**
+
+1.  Sử dụng **phpMyAdmin** hoặc một công cụ tương tự, tạo một database mới với tên `file_storage_db` và collation là `utf8mb4_unicode_ci`.
+2.  Thực thi toàn bộ đoạn mã SQL dưới đây để tạo các bảng `users`, `files`, và `file_shares`.
 
 ```sql
--- 1. Bảng users
 CREATE TABLE `users` (
   `user_id` int(11) NOT NULL AUTO_INCREMENT,
-  `username` varchar(50) NOT NULL UNIQUE,
-  `password_hash` varchar(255) NOT NULL,
-  `salt` varchar(50) NOT NULL,
-  `email` varchar(100) DEFAULT NULL UNIQUE,
-  `status` tinyint(4) DEFAULT '1',
-  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `is_active` tinyint(4) DEFAULT '1',
-  `last_login` datetime DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (`user_id`)
+  `username` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `password_hash` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `email` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `last_login` datetime DEFAULT current_timestamp(),
+  `is_active` tinyint(1) DEFAULT 1,
+  PRIMARY KEY (`user_id`),
+  UNIQUE KEY `username` (`username`),
+  UNIQUE KEY `email` (`email`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 2. Bảng files
 CREATE TABLE `files` (
   `file_id` int(11) NOT NULL AUTO_INCREMENT,
   `owner_id` int(11) NOT NULL,
-  `file_name` varchar(255) NOT NULL,
-  `file_path` varchar(250) NOT NULL, -- Đường dẫn vật lý trên Server
-  `mime_type` varchar(50) DEFAULT NULL,
+  `file_name` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `file_path` varchar(250) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `mime_type` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `file_size` bigint(20) NOT NULL,
-  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `last_modified` datetime DEFAULT CURRENT_TIMESTAMP,
-  `is_shared` tinyint(1) DEFAULT '0',
-  `share_token` varchar(36) DEFAULT NULL,
-  `share_expiry` datetime DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `is_shared` tinyint(1) DEFAULT 0,
   PRIMARY KEY (`file_id`),
-  FOREIGN KEY (`owner_id`) REFERENCES `users` (`user_id`)
+  KEY `owner_id` (`owner_id`),
+  CONSTRAINT `files_ibfk_1` FOREIGN KEY (`owner_id`) REFERENCES `users` (`user_id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 3. Bảng file_shares (Quản lý Quyền Truy cập)
 CREATE TABLE `file_shares` (
   `share_id` int(11) NOT NULL AUTO_INCREMENT,
   `file_id` int(11) NOT NULL,
-  `shared_with_user_id` int(11) NOT NULL, -- Người nhận quyền
-  `shared_by_user_id` int(11) NOT NULL, -- Chủ sở hữu/Người cấp quyền
-  `permission_level` tinyint(1) DEFAULT '1', -- Mức quyền: 1 (Download Only)
-  `shared_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `shared_with_user_id` int(11) NOT NULL,
+  `shared_by_user_id` int(11) NOT NULL,
+  `permission_level` tinyint(1) DEFAULT 1,
+  `shared_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `share_expiry` datetime DEFAULT NULL,
   PRIMARY KEY (`share_id`),
-  FOREIGN KEY (`file_id`) REFERENCES `files` (`file_id`) ON DELETE CASCADE,
-  FOREIGN KEY (`shared_with_user_id`) REFERENCES `users` (`user_id`) ON DELETE CASCADE,
-  FOREIGN KEY (`shared_by_user_id`) REFERENCES `users` (`user_id`) ON DELETE CASCADE
+  UNIQUE KEY `uk_file_user` (`file_id`,`shared_with_user_id`),
+  KEY `shared_with_user_id` (`shared_with_user_id`),
+  KEY `shared_by_user_id` (`shared_by_user_id`),
+  CONSTRAINT `file_shares_ibfk_1` FOREIGN KEY (`file_id`) REFERENCES `files` (`file_id`) ON DELETE CASCADE,
+  CONSTRAINT `file_shares_ibfk_2` FOREIGN KEY (`shared_with_user_id`) REFERENCES `users` (`user_id`) ON DELETE CASCADE,
+  CONSTRAINT `file_shares_ibfk_3` FOREIGN KEY (`shared_by_user_id`) REFERENCES `users` (`user_id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 ```
-## 🔑 Giao Thức Lệnh Mở Rộng (Client-Server Protocol)
 
-Client gửi các lệnh dưới dạng chuỗi dữ liệu qua Socket. Server (`ClientHandler`) phân tích cú pháp lệnh.
+## 🧩 Bước 2: Cấu hình Dự án
 
-### A. Lệnh Chia sẻ (String Commands)
+> ⚠️ **Quan trọng:** Bạn cần cập nhật **các đường dẫn tuyệt đối** trong code để khớp với **cấu trúc thư mục trên máy của bạn**.
 
-| Lệnh Gửi (Cú pháp) | Gửi từ Client | Xử lý Server | Phản hồi Thành công |
-| :--- | :--- | :--- | :--- |
-| **Chia sẻ** | `SHARE:<FileID>|<Username_Target>|<Level>` | `FileDAO.shareFile` | `SHARE_SUCCESS` / Mã lỗi |
-| **Hủy Chia sẻ** | `UNSHARE:<FileID>|<Username_Target>` | `FileDAO.unshareFile` | `UNSHARE_SUCCESS` / Mã lỗi |
-| **Cập nhật Quyền** | `CHANGE_PERM:<FileID>|<Username_Target>|<NewLevel>` | `FileDAO.updateFileSharePermission` | `UPDATE_SUCCESS` / Mã lỗi |
-| **Lấy DS Chia sẻ**| `SHARE_LIST:<FileID>` | `FileDAO.getSharedUsersByFile` | `SHARELIST_START:user1|1|date;...` / Mã lỗi |
+### 🖥️ Server – Kết nối CSDL
 
-### B. Lệnh Cố định (CMD\_)
-
-| Lệnh | Gửi từ Client | Phản hồi Thành công | Mô tả |
-| :--- | :--- | :--- | :--- |
-| `CMD_LOGIN` | `UserID, Password` | `LOGIN_SUCCESS, UserID, Username` | Xác thực người dùng. |
-| `CMD_LISTFILES`| (Không) | `FILELIST_START:data` | Hiển thị file sở hữu và file được chia sẻ. |
-| `CMD_DOWNLOAD` | `FileID` | `DOWNLOAD_START:data` | Kiểm tra quyền Owner hoặc Shared. |
-| `CMD_DELETE` | `FileID` | `DELETE_SUCCESS` | Chỉ cho phép Owner xóa. |
+- **Mở file:**  
+  `FileStorageServer/src/filestorageserver/MyConnection.java`
+- **Thực hiện:**  
+  Chỉnh sửa chuỗi `URL`, `username`, hoặc `password` nếu thông tin MySQL của bạn **khác mặc định** (ví dụ: cổng, tài khoản, mật khẩu).
 
 ---
 
-## 🔧 Hướng dẫn Thiết lập và Chạy
+### 💾 Server – Đường dẫn Lưu trữ & SSL
 
-### 0. Thiết lập Thư viện (Libraries)
+1. **Thiết lập thư mục lưu trữ**
+   - **Mở file:**  
+     `FileStorageServer/src/filestorageserver/commands/UploadCommandHandler.java`
+   - **Thực hiện:**  
+     Thay đổi giá trị của biến:
+     ```java
+     SERVER_STORAGE_ROOT
+     ```
+     thành **thư mục bạn muốn dùng để lưu file**.
+2. **Cấu hình SSL**
+   - **Mở file:**  
+     `FileStorageServer/src/filestorageserver/FileServer.java`
+   - **Thực hiện:**  
+     Cập nhật giá trị:
+     ```java
+     absoluteKeyStorePath
+     ```
+     thành **đường dẫn tuyệt đối** đến file `server.jks` trên máy của bạn.
 
-1.  Trong NetBeans, nhấp chuột phải vào mục **Libraries** của **cả hai Project** (`FileStorageServer` và `FileStorageClient`).
-2.  Chọn **Add JAR/Folder** và thêm hai file `.jar` sau từ thư mục **`Drivers`**:
-    * `mysql-connector-j-8.3.0.jar`
-    * `bcrypt-0.4.jar`
+---
 
-### 1. Thiết lập Cơ sở Dữ liệu
+### 💻 Client – SSL TrustStore
 
-1.  Tạo Database mới có tên: **`file_storage_db`** (sử dụng XAMPP/MySQL Workbench).
-2.  Thực thi toàn bộ đoạn mã SQL trong mục "Cấu trúc Cơ sở Dữ liệu" để tạo ba bảng: users, files, và file_shares.
-3.  Cập nhật thông tin kết nối Database (URL, User, Pass) trong file **`FileStorageServer/src/filestorageserver/MyConnection.java`**.
-4.  Thiết lập đường dẫn lưu trữ file vật lý trên Server trong `FileServer.java` (nếu cần).
-=======
-1.  Sử dụng XAMPP để tạo một database mới với tên: **`file_storage_db`**.
-2.  Chạy các lệnh SQL sau để tạo bảng **`users`** và **`files`**:
+- **Mở file:**  
+  `FileStorageClient/src/filestorageclient/ClientSocketManager.java`
+- **Thực hiện:**  
+  Cập nhật giá trị:
+  ```java
+  absoluteTrustStorePath
+  ```
 
-    ```sql
-    -- Kiểm tra và xóa Database cũ nếu tồn tại
-      -- DROP DATABASE IF EXISTS file_storage_db;
-      
-      -- Tạo Database mới
-      -- CREATE DATABASE file_storage_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-      -- USE file_storage_db;
-      
-      CREATE TABLE `users` (
-     `user_id` int(11) NOT NULL AUTO_INCREMENT,
-     `username` varchar(50) NOT NULL UNIQUE,
-     `password_hash` varchar(255) NOT NULL,
-     `salt` varchar(50) NOT NULL,
-     `email` varchar(100) DEFAULT NULL UNIQUE,
-     `status` tinyint(4) DEFAULT '1',
-     `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-     `is_active` tinyint(4) DEFAULT '1',
-     `last_login` datetime DEFAULT CURRENT_TIMESTAMP, -- ĐÃ SỬA
-     PRIMARY KEY (`user_id`)
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-      
-      -- Bảng files
-      CREATE TABLE `files` (
-        `file_id` int(11) NOT NULL AUTO_INCREMENT,
-        `owner_id` int(11) NOT NULL,
-        `file_name` varchar(255) NOT NULL,
-        `file_path` varchar(250) NOT NULL,
-        `mime_type` varchar(50) DEFAULT NULL,
-        `file_size` bigint(20) NOT NULL,
-        `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        `last_modified` datetime DEFAULT CURRENT_TIMESTAMP,
-        `is_shared` tinyint(1) DEFAULT '0',
-        `share_token` varchar(36) DEFAULT NULL,
-        `share_expiry` datetime DEFAULT NULL,
-        PRIMARY KEY (`file_id`),
-        FOREIGN KEY (`owner_id`) REFERENCES `users` (`user_id`)
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-    ```
+## 🚀 Bước 3: Chạy Ứng dụng
 
-3.  Cập nhật thông tin kết nối Database (URL, Tên người dùng, Mật khẩu) trong file **`FileStorageServer/src/filestorageserver/MyConnection.java`**.
+1. **Khởi động CSDL**  
+   Đảm bảo **module MySQL trong XAMPP** đang ở trạng thái **“Running”**.
 
-### 2. Chạy Ứng dụng
+2. **Chạy Server**
 
-1.  **Chạy Server:** Mở project `FileStorageServer` và chạy class **`FileServer.java`** (`Shift + F6`). Server sẽ khởi động và lắng nghe tại cổng **12345**.
-2.  **Chạy Client:** Mở project `FileStorageClient` và chạy class **`frmLogin.java`** (`Shift + F6`).
-3.  Đăng ký hai tài khoản (ví dụ: `userA` và `userB`) để kiểm tra tính năng chia sẻ.
+   - Mở project `FileStorageServer`
+   - Chuột phải vào file `FileServer.java` → chọn **Run File**
+   - Cửa sổ **Server Dashboard** sẽ xuất hiện.
+
+3. **Chạy Client**
+   - Mở project `FileStorageClient`
+   - Chuột phải vào file `frmLogin.java` → chọn **Run File**
+
+> 💡 Bạn có thể **chạy nhiều Client cùng lúc** để kiểm tra **tính năng đa người dùng** và **quan sát trạng thái trên Dashboard**.
