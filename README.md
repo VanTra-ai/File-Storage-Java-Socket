@@ -2,8 +2,6 @@
 
 Đây là một ứng dụng Client-Server hoàn chỉnh được xây dựng bằng **Java**, mô phỏng một hệ thống lưu trữ file trên đám mây. Dự án sử dụng **Java Socket** với mã hóa **SSL/TLS** cho giao tiếp mạng, **Java Swing** cho giao diện người dùng, và **MySQL** để quản lý metadata.
 
-!(https://i.imgur.com/a0e1a5.png)
-
 ---
 
 ## 🚀 Tính năng Chính (Version 3.0: Dashboard & Hoàn thiện)
@@ -103,7 +101,10 @@ CREATE TABLE `files` (
   `mime_type` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `file_size` bigint(20) NOT NULL,
   `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `last_modified` datetime DEFAULT NULL,
   `is_shared` tinyint(1) DEFAULT 0,
+  `share_token` varchar(36) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `share_expiry` datetime DEFAULT NULL,
   PRIMARY KEY (`file_id`),
   KEY `owner_id` (`owner_id`),
   CONSTRAINT `files_ibfk_1` FOREIGN KEY (`owner_id`) REFERENCES `users` (`user_id`) ON DELETE CASCADE
