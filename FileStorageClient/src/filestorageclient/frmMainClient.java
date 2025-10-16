@@ -10,24 +10,19 @@ import javax.swing.table.DefaultTableModel;
 import java.awt.event.ActionEvent;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.List;
 
 public class frmMainClient extends javax.swing.JFrame {
-    // --- LẤY INSTANCE SINGLETON ---
 
     private final ClientSocketManager clientManager = ClientSocketManager.getInstance();
-
-    private String username; // Vẫn cần username để hiển thị lời chào
+    private String username;
     private DefaultTableModel tableModel;
     private static final Logger logger = Logger.getLogger(frmMainClient.class.getName());
 
-    // --- XÓA TẤT CẢ THAM SỐ CONSTRUCTOR ---
     public frmMainClient() {
-        // --- LẤY USERNAME TRỰC TIẾP TỪ MANAGER ---
         this.username = clientManager.getCurrentUsername();
-
         initComponents();
         initializeTable();
-
         lblWelcome.setText("Xin chào, " + this.username + "!");
         this.setLocationRelativeTo(null);
         this.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
@@ -252,22 +247,49 @@ public class frmMainClient extends javax.swing.JFrame {
     private void handleUpload() {
         JFileChooser fileChooser = new JFileChooser();
         int result = fileChooser.showOpenDialog(this);
-        if (result == JFileChooser.APPROVE_OPTION) {
-            File selectedFile = fileChooser.getSelectedFile();
-            btnUpload.setEnabled(false);
 
-            new SwingWorker<String, Void>() {
+        if (result == JFileChooser.APPROVE_OPTION) {
+            final File selectedFile = fileChooser.getSelectedFile();
+            final ProgressDialog progressDialog = new ProgressDialog(this, "Uploading File...");
+            final long startTime = System.currentTimeMillis();
+
+            // Định nghĩa một lớp nội bộ cục bộ để xử lý tác vụ upload.
+            // Lớp này vừa kế thừa SwingWorker, vừa implement ProgressPublisher.
+            class UploadWorker extends SwingWorker<String, ClientSocketManager.ProgressData> implements ProgressPublisher {
+
+                @Override
+                public void publishProgress(ClientSocketManager.ProgressData data) {
+                    // Phương thức public này làm cầu nối, gọi đến phương thức protected của SwingWorker.
+                    publish(data);
+                }
+
                 @Override
                 protected String doInBackground() throws Exception {
-                    return clientManager.uploadFile(selectedFile);
+                    // Truyền chính đối tượng worker này (với vai trò ProgressPublisher) vào manager.
+                    return clientManager.uploadFile(selectedFile, this);
+                }
+
+                @Override
+                protected void process(List<ClientSocketManager.ProgressData> chunks) {
+                    ClientSocketManager.ProgressData latestData = chunks.get(chunks.size() - 1);
+                    progressDialog.updateProgress(latestData.getPercentage());
+
+                    String transferredMB = String.format("%.2f", (double) latestData.getTotalBytesTransferred() / (1024 * 1024));
+                    String totalMB = String.format("%.2f", (double) latestData.getTotalFileSize() / (1024 * 1024));
+                    progressDialog.setStatusText(String.format("Uploading %s MB / %s MB...", transferredMB, totalMB));
                 }
 
                 @Override
                 protected void done() {
+                    long endTime = System.currentTimeMillis();
+                    double durationInSeconds = (endTime - startTime) / 1000.0;
+
                     try {
                         String uploadResult = get();
                         if ("UPLOAD_SUCCESS".equals(uploadResult)) {
-                            JOptionPane.showMessageDialog(frmMainClient.this, "Upload file '" + selectedFile.getName() + "' thành công!");
+                            progressDialog.setStatusText("Upload Complete!");
+                            JOptionPane.showMessageDialog(frmMainClient.this,
+                                    String.format("Upload thành công!\nThời gian: %.2f giây", durationInSeconds));
                             loadFileList();
                         } else {
                             JOptionPane.showMessageDialog(frmMainClient.this, "Upload thất bại: " + uploadResult, "Lỗi", JOptionPane.ERROR_MESSAGE);
@@ -275,10 +297,15 @@ public class frmMainClient extends javax.swing.JFrame {
                     } catch (Exception ex) {
                         logger.log(Level.SEVERE, "Lỗi khi Upload file", ex);
                     } finally {
-                        btnUpload.setEnabled(true);
+                        progressDialog.closeDialog();
                     }
                 }
-            }.execute();
+            }
+
+            // Khởi tạo và thực thi worker
+            UploadWorker worker = new UploadWorker();
+            worker.execute();
+            progressDialog.setVisible(true);
         }
     }
 
@@ -292,7 +319,7 @@ public class frmMainClient extends javax.swing.JFrame {
             return;
         }
 
-        int fileId = Integer.parseInt((String) tableModel.getValueAt(selectedRow, 0));
+        final int fileId = Integer.parseInt((String) tableModel.getValueAt(selectedRow, 0));
         String fileName = (String) tableModel.getValueAt(selectedRow, 1);
 
         JFileChooser fileChooser = new JFileChooser();
@@ -300,31 +327,57 @@ public class frmMainClient extends javax.swing.JFrame {
         int userSelection = fileChooser.showSaveDialog(this);
 
         if (userSelection == JFileChooser.APPROVE_OPTION) {
-            File fileToSave = fileChooser.getSelectedFile();
-            btnDownload.setEnabled(false);
+            final File fileToSave = fileChooser.getSelectedFile();
+            final ProgressDialog progressDialog = new ProgressDialog(this, "Downloading File...");
+            final long startTime = System.currentTimeMillis();
 
-            new SwingWorker<String, Void>() {
+            class DownloadWorker extends SwingWorker<String, ClientSocketManager.ProgressData> implements ProgressPublisher {
+
+                @Override
+                public void publishProgress(ClientSocketManager.ProgressData data) {
+                    publish(data);
+                }
+
                 @Override
                 protected String doInBackground() throws Exception {
-                    return clientManager.downloadFile(fileId, fileToSave);
+                    return clientManager.downloadFile(fileId, fileToSave, this);
+                }
+
+                @Override
+                protected void process(List<ClientSocketManager.ProgressData> chunks) {
+                    ClientSocketManager.ProgressData latestData = chunks.get(chunks.size() - 1);
+                    progressDialog.updateProgress(latestData.getPercentage());
+
+                    String transferredMB = String.format("%.2f", (double) latestData.getTotalBytesTransferred() / (1024 * 1024));
+                    String totalMB = String.format("%.2f", (double) latestData.getTotalFileSize() / (1024 * 1024));
+                    progressDialog.setStatusText(String.format("Downloading %s MB / %s MB...", transferredMB, totalMB));
                 }
 
                 @Override
                 protected void done() {
+                    long endTime = System.currentTimeMillis();
+                    double durationInSeconds = (endTime - startTime) / 1000.0;
+
                     try {
                         String downloadResult = get();
                         if ("DOWNLOAD_SUCCESS".equals(downloadResult)) {
-                            JOptionPane.showMessageDialog(frmMainClient.this, "Tải file thành công! Đã lưu tại: " + fileToSave.getAbsolutePath());
+                            progressDialog.setStatusText("Download Complete!");
+                            JOptionPane.showMessageDialog(frmMainClient.this,
+                                    String.format("Tải file thành công!\nThời gian: %.2f giây", durationInSeconds));
                         } else {
                             JOptionPane.showMessageDialog(frmMainClient.this, "Tải file thất bại: " + downloadResult, "Lỗi", JOptionPane.ERROR_MESSAGE);
                         }
                     } catch (Exception ex) {
                         logger.log(Level.SEVERE, "Lỗi khi Download file", ex);
                     } finally {
-                        btnDownload.setEnabled(true);
+                        progressDialog.closeDialog();
                     }
                 }
-            }.execute();
+            }
+
+            DownloadWorker worker = new DownloadWorker();
+            worker.execute();
+            progressDialog.setVisible(true);
         }
     }
 

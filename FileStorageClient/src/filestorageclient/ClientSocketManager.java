@@ -4,6 +4,7 @@ import java.io.*;
 import java.net.Socket;
 import javax.net.SocketFactory;
 import javax.net.ssl.SSLSocketFactory;
+import java.util.List;
 
 /**
  * Quản lý kết nối và giao tiếp với server. Lớp này được triển khai theo mẫu
@@ -34,6 +35,26 @@ public class ClientSocketManager {
         return instance;
     }
 
+    // Lớp nhỏ để đóng gói dữ liệu tiến độ
+    public static class ProgressData {
+        private final long totalBytesTransferred;
+        private final long totalFileSize;
+
+        public ProgressData(long transferred, long total) {
+            this.totalBytesTransferred = transferred;
+            this.totalFileSize = total;
+        }
+
+        public int getPercentage() {
+            if (totalFileSize == 0) return 100;
+            return (int) ((totalBytesTransferred * 100) / totalFileSize);
+        }
+
+        public long getTotalBytesTransferred() { return totalBytesTransferred; }
+        public long getTotalFileSize() { return totalFileSize; }
+    }
+
+    //<editor-fold defaultstate="collapsed" desc="Connection & Auth Methods">
     public synchronized boolean connect() {
         if (isConnected) {
             return true;
@@ -65,7 +86,7 @@ public class ClientSocketManager {
                 socket.close();
             }
         } catch (IOException e) {
-            System.err.println("Lỗi khi đóng kết nối: " + e.getMessage());
+            // Bỏ qua lỗi khi đóng
         } finally {
             isConnected = false;
             currentUserId = -1;
@@ -129,31 +150,36 @@ public class ClientSocketManager {
     }
 
     //<editor-fold defaultstate="collapsed" desc="File Transfer Methods">
-    public String uploadFile(java.io.File fileToUpload) {
-        if (!isLoggedIn()) {
-            return "ERROR_NOT_LOGGED_IN";
-        }
-        if (!fileToUpload.exists() || !fileToUpload.isFile()) {
-            return "ERROR_FILE_NOT_FOUND";
-        }
+    public String uploadFile(java.io.File fileToUpload, ProgressPublisher publisher) {
+        if (!isLoggedIn()) return "ERROR_NOT_LOGGED_IN";
+        if (!fileToUpload.exists()) return "ERROR_FILE_NOT_FOUND";
 
         try (FileInputStream fis = new FileInputStream(fileToUpload)) {
             dos.writeUTF("CMD_UPLOAD");
             dos.writeUTF(fileToUpload.getName());
-            dos.writeLong(fileToUpload.length());
+            long totalFileSize = fileToUpload.length();
+            dos.writeLong(totalFileSize);
             dos.writeUTF(getFileType(fileToUpload.getName()));
             dos.flush();
 
             byte[] buffer = new byte[8192];
             int bytesRead;
+            long totalBytesSent = 0;
+            
             while ((bytesRead = fis.read(buffer)) > 0) {
                 dos.write(buffer, 0, bytesRead);
+                totalBytesSent += bytesRead;
+                
+                // Gửi thông tin tiến độ qua "kênh liên lạc"
+                if (publisher != null) {
+                    publisher.publishProgress(new ProgressData(totalBytesSent, totalFileSize));
+                }
             }
             dos.flush();
 
             String response = dis.readUTF();
             if ("UPLOAD_SUCCESS".equals(response)) {
-                dis.readInt(); // Đọc fileId trả về
+                dis.readInt();
                 return "UPLOAD_SUCCESS";
             }
             return response;
@@ -163,11 +189,12 @@ public class ClientSocketManager {
         }
     }
 
-    public String downloadFile(int fileId, java.io.File fileToSave) {
-        if (!isLoggedIn()) {
-            return "ERROR_NOT_LOGGED_IN";
-        }
-
+    /**
+     * Tải file xuống và báo cáo tiến độ.
+     */
+    public String downloadFile(int fileId, java.io.File fileToSave, ProgressPublisher publisher) {
+        if (!isLoggedIn()) return "ERROR_NOT_LOGGED_IN";
+        
         try {
             dos.writeUTF("CMD_DOWNLOAD");
             dos.writeInt(fileId);
@@ -178,18 +205,24 @@ public class ClientSocketManager {
                 return startResponse;
             }
 
-            dis.readUTF(); // Đọc tên file (không dùng ở đây)
-            long fileSize = dis.readLong();
+            dis.readUTF(); // Đọc tên file
+            long totalFileSize = dis.readLong(); 
 
             try (FileOutputStream fos = new FileOutputStream(fileToSave)) {
                 byte[] buffer = new byte[8192];
                 int bytesRead;
                 long totalBytesRead = 0;
-                while (totalBytesRead < fileSize && (bytesRead = dis.read(buffer, 0, (int) Math.min(buffer.length, fileSize - totalBytesRead))) != -1) {
+
+                while (totalBytesRead < totalFileSize && (bytesRead = dis.read(buffer, 0, (int) Math.min(buffer.length, totalFileSize - totalBytesRead))) != -1) {
                     fos.write(buffer, 0, bytesRead);
                     totalBytesRead += bytesRead;
+                    // Gửi thông tin tiến độ qua "kênh liên lạc"
+                    if (publisher != null) {
+                        publisher.publishProgress(new ProgressData(totalBytesRead, totalFileSize));
+                    }
                 }
-                return (totalBytesRead == fileSize) ? "DOWNLOAD_SUCCESS" : "DOWNLOAD_FAIL_INCOMPLETE";
+                
+                return (totalBytesRead == totalFileSize) ? "DOWNLOAD_SUCCESS" : "DOWNLOAD_FAIL_INCOMPLETE";
             }
         } catch (IOException e) {
             handleIOException(e, "CMD_DOWNLOAD");
