@@ -37,7 +37,6 @@ public class ClientHandler extends Thread {
     static {
         commandMap.put("CMD_LOGIN", new LoginCommandHandler());
         commandMap.put("CMD_REGISTER", new RegisterCommandHandler());
-        commandMap.put("CMD_UPLOAD", new UploadCommandHandler());
         commandMap.put("CMD_DOWNLOAD", new DownloadCommandHandler());
         commandMap.put("CMD_DELETE", new DeleteCommandHandler());
         commandMap.put("CMD_GET_FOLDERS", new GetFoldersCommandHandler());
@@ -46,6 +45,10 @@ public class ClientHandler extends Thread {
         commandMap.put("CMD_MOVE_ITEM", new MoveItemCommandHandler());
         commandMap.put("CMD_RENAME_FOLDER", new RenameFolderCommandHandler());
         commandMap.put("CMD_DELETE_FOLDER", new DeleteFolderCommandHandler());
+        commandMap.put("CMD_START_UPLOAD", new StartUploadCommandHandler());
+        commandMap.put("CMD_UPLOAD_CHUNK", new UploadChunkCommandHandler());
+        commandMap.put("CMD_COMPLETE_UPLOAD", new CompleteUploadCommandHandler());
+        commandMap.put("CMD_GET_UPLOAD_STATUS", new GetUploadStatusCommandHandler());
     }
 
     public ClientHandler(Socket socket, ServerActivityListener listener) {

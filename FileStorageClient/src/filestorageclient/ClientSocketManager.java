@@ -5,6 +5,9 @@ import java.net.Socket;
 import javax.net.SocketFactory;
 import javax.net.ssl.SSLSocketFactory;
 import java.util.List;
+import java.util.Properties;
+import java.nio.file.Paths;
+import java.nio.file.Files;
 
 /**
  * Quản lý kết nối và giao tiếp với server. Lớp này được triển khai theo mẫu
@@ -158,60 +161,157 @@ public class ClientSocketManager {
     }
 
     //<editor-fold defaultstate="collapsed" desc="File Transfer Methods">
-    public String uploadFile(java.io.File fileToUpload, Integer folderId, ProgressPublisher publisher) { // THÊM Integer folderId
+    public String uploadFile(java.io.File fileToUpload, Integer folderId, ProgressPublisher publisher) {
         if (!isLoggedIn()) {
             return "ERROR_NOT_LOGGED_IN";
         }
-        if (!fileToUpload.exists()) {
+        if (!fileToUpload.exists() || !fileToUpload.isFile()) {
             return "ERROR_FILE_NOT_FOUND";
         }
+        if (!isConnected && !connect()) {
+            return "ERROR_CONNECTION";
+        }
 
-        try (FileInputStream fis = new FileInputStream(fileToUpload)) {
-            dos.writeUTF("CMD_UPLOAD");
-            dos.writeUTF(fileToUpload.getName());
-            long totalFileSize = fileToUpload.length();
-            dos.writeLong(totalFileSize);
-            dos.writeUTF(getFileType(fileToUpload.getName()));
+        String sessionId = null;
+        int chunkSize = -1;
+        long totalFileSize = fileToUpload.length();
+        long currentOffset = 0; // Offset bắt đầu
+        String filePathKey = fileToUpload.getAbsolutePath(); // Dùng đường dẫn tuyệt đối làm key cache
 
-            // THÊM: Gửi folderId (-1 nếu là null)
-            dos.writeInt(folderId != null ? folderId : -1);
+        try {
+            // --- Bước 0: Kiểm tra Cache để Resume ---
+            String cachedSessionId = getCachedSessionId(filePathKey);
+            boolean resuming = false;
 
-            dos.flush(); // Flush sau khi gửi metadata
+            if (cachedSessionId != null) {
+                System.out.println("Tìm thấy session ID trong cache: " + cachedSessionId + ". Thử resume...");
+                String statusResponse = getUploadStatus(cachedSessionId); // Gọi CMD_GET_UPLOAD_STATUS
 
-            byte[] buffer = new byte[8192];
-            int bytesRead;
-            long totalBytesSent = 0;
-
-            while ((bytesRead = fis.read(buffer)) > 0) {
-                dos.write(buffer, 0, bytesRead);
-                totalBytesSent += bytesRead;
-
-                if (publisher != null) {
-                    publisher.publishProgress(new ProgressData(totalBytesSent, totalFileSize));
+                if (statusResponse.startsWith("UPLOAD_STATUS:")) {
+                    try {
+                        String[] parts = statusResponse.split(":");
+                        currentOffset = Long.parseLong(parts[1]);
+                        chunkSize = Integer.parseInt(parts[2]);
+                        sessionId = cachedSessionId; // Sử dụng lại session ID cũ
+                        resuming = true;
+                        System.out.println("Resume thành công tại offset: " + currentOffset + ", chunk size: " + chunkSize);
+                        if (publisher != null) { // Báo cáo tiến độ ban đầu khi resume
+                            publisher.publishProgress(new ProgressData(currentOffset, totalFileSize));
+                        }
+                    } catch (NumberFormatException | ArrayIndexOutOfBoundsException e) {
+                        System.err.println("Lỗi phân tích phản hồi UPLOAD_STATUS: " + statusResponse);
+                        removeCachedSessionId(filePathKey); // Xóa cache lỗi
+                        currentOffset = 0; // Bắt đầu lại từ đầu
+                    }
+                } else {
+                    System.out.println("Server báo không tìm thấy session (" + statusResponse + "). Bắt đầu upload mới.");
+                    removeCachedSessionId(filePathKey); // Xóa cache không hợp lệ
+                    currentOffset = 0; // Bắt đầu lại từ đầu
                 }
             }
-            dos.flush(); // Flush sau khi gửi xong file data
 
-            // Đọc phản hồi từ server
-            String response = dis.readUTF();
-            if ("UPLOAD_SUCCESS".equals(response)) {
-                // Đọc thêm fileId mới trả về (không dùng nhưng cần đọc để stream không lỗi)
-                try {
-                    dis.readInt();
-                } catch (IOException readEx) {
-                    // Bỏ qua nếu server không gửi fileId hoặc lỗi đọc
-                    System.err.println("Warning: Could not read fileId after upload success.");
+            // --- Bước 1: Bắt đầu phiên Upload (Nếu không resume) ---
+            if (!resuming) {
+                dos.writeUTF("CMD_START_UPLOAD");
+                dos.writeUTF(fileToUpload.getName());
+                dos.writeLong(totalFileSize);
+                dos.writeInt(folderId != null ? folderId : -1);
+                dos.flush();
+
+                String startResponse = dis.readUTF();
+                if (!"UPLOAD_STARTED".equals(startResponse)) {
+                    System.err.println("Lỗi bắt đầu upload: " + startResponse);
+                    return startResponse;
                 }
-                return "UPLOAD_SUCCESS";
+                sessionId = dis.readUTF();
+                chunkSize = dis.readInt();
+                System.out.println("Upload session mới bắt đầu: " + sessionId + ", Chunk size: " + chunkSize);
+
+                // Lưu session ID vào cache
+                cacheSessionId(filePathKey, sessionId);
             }
-            return response; // Trả về mã lỗi nếu có
+
+            // --- Bước 2: Gửi từng Chunk (Từ currentOffset) ---
+            try (FileInputStream fis = new FileInputStream(fileToUpload)) {
+
+                // *** QUAN TRỌNG: Bỏ qua phần đã upload nếu resume ***
+                if (resuming && currentOffset > 0) {
+                    long skipped = fis.skip(currentOffset);
+                    if (skipped != currentOffset) {
+                        System.err.println("Lỗi khi skip file đến offset " + currentOffset);
+                        removeCachedSessionId(filePathKey); // Xóa cache lỗi
+                        return "ERROR_FILE_SEEK_FAILED";
+                    }
+                    System.out.println("Đã skip " + skipped + " bytes để resume.");
+                }
+
+                byte[] buffer = new byte[chunkSize];
+                int bytesReadFromFile;
+
+                while (currentOffset < totalFileSize) {
+                    bytesReadFromFile = fis.read(buffer);
+                    if (bytesReadFromFile == -1) {
+                        break;
+                    }
+
+                    dos.writeUTF("CMD_UPLOAD_CHUNK");
+                    dos.writeUTF(sessionId);
+                    dos.writeLong(currentOffset);
+                    dos.writeInt(bytesReadFromFile);
+                    dos.write(buffer, 0, bytesReadFromFile);
+                    dos.flush();
+
+                    String chunkResponse = dis.readUTF();
+                    if (!"CHUNK_SUCCESS".equals(chunkResponse)) {
+                        System.err.println("Lỗi gửi chunk tại offset " + currentOffset + ": " + chunkResponse);
+                        // Khi lỗi chunk, không xóa cache ngay, để lần sau có thể thử resume lại
+                        return chunkResponse;
+                    }
+
+                    currentOffset += bytesReadFromFile;
+                    if (publisher != null) {
+                        publisher.publishProgress(new ProgressData(currentOffset, totalFileSize));
+                    }
+                } // Kết thúc vòng lặp chunk
+            }
+
+            // --- Bước 3: Hoàn tất Upload ---
+            if (currentOffset == totalFileSize) {
+                System.out.println("Đã gửi xong các chunk, gửi lệnh hoàn tất...");
+                dos.writeUTF("CMD_COMPLETE_UPLOAD");
+                dos.writeUTF(sessionId);
+                dos.flush();
+
+                String completeResponse = dis.readUTF();
+                if ("UPLOAD_COMPLETE_SUCCESS".equals(completeResponse)) {
+                    int newFileId = dis.readInt();
+                    System.out.println("Upload thành công! File ID mới: " + newFileId);
+
+                    // *** Xóa session ID khỏi cache khi hoàn thành ***
+                    removeCachedSessionId(filePathKey);
+
+                    return "UPLOAD_COMPLETE_SUCCESS";
+                } else {
+                    System.err.println("Lỗi hoàn tất upload: " + completeResponse);
+                    // Không xóa cache nếu hoàn tất lỗi, để có thể thử lại? (Tùy logic)
+                    // removeCachedSessionId(filePathKey); 
+                    return completeResponse;
+                }
+            } else {
+                System.err.println("Lỗi: Chưa gửi đủ file. Offset cuối: " + currentOffset + ", Tổng size: " + totalFileSize);
+                // Không xóa cache để lần sau resume
+                return "UPLOAD_FAIL_INCOMPLETE_CLIENT";
+            }
 
         } catch (IOException e) {
-            handleIOException(e, "CMD_UPLOAD");
+            // Khi lỗi IO, không xóa cache, để lần sau resume
+            handleIOException(e, "UPLOAD_PROCESS (Session: " + sessionId + ")");
             return "ERROR_IO_UPLOAD";
-        } catch (Exception e) { // Bắt thêm các lỗi khác
-            System.err.println("Lỗi không xác định khi upload: " + e.getMessage());
+        } catch (Exception e) {
+            System.err.println("Lỗi không xác định khi upload (Session: " + sessionId + "): " + e.getMessage());
             e.printStackTrace();
+            // Có thể xóa cache khi lỗi nghiêm trọng?
+            // removeCachedSessionId(filePathKey); 
             return "ERROR_UNKNOWN_UPLOAD";
         }
     }
@@ -303,6 +403,33 @@ public class ClientSocketManager {
             return dis.readUTF();
         } catch (IOException e) {
             handleIOException(e, command);
+            return "ERROR_IO_COMMAND";
+        }
+    }
+
+    public String getUploadStatus(String sessionId) {
+        if (!isLoggedIn()) {
+            return "ERROR_NOT_LOGGED_IN";
+        }
+        if (!isConnected && !connect()) {
+            return "ERROR_CONNECTION";
+        }
+
+        try {
+            dos.writeUTF("CMD_GET_UPLOAD_STATUS");
+            dos.writeUTF(sessionId);
+            dos.flush();
+            String response = dis.readUTF();
+
+            if ("UPLOAD_STATUS".equals(response)) {
+                long currentOffset = dis.readLong();
+                int chunkSize = dis.readInt();
+                // Trả về chuỗi chứa cả 3 thông tin để dễ phân tích
+                return "UPLOAD_STATUS:" + currentOffset + ":" + chunkSize;
+            }
+            return response; // Trả về UPLOAD_NOT_FOUND hoặc lỗi khác
+        } catch (IOException e) {
+            handleIOException(e, "CMD_GET_UPLOAD_STATUS");
             return "ERROR_IO_COMMAND";
         }
     }
@@ -509,4 +636,62 @@ public class ClientSocketManager {
         }
     }
     //</editor-fold>
+    // --- Helper Methods for Upload Cache ---
+
+    private static final String CACHE_FILE_NAME = "upload_cache.properties";
+
+    /**
+     * Tải cache từ file properties.
+     */
+    private Properties loadUploadCache() {
+        Properties cache = new Properties();
+        File cacheFile = new File(CACHE_FILE_NAME);
+        if (cacheFile.exists()) {
+            try (InputStream input = new FileInputStream(cacheFile)) {
+                cache.load(input);
+            } catch (IOException e) {
+                System.err.println("Lỗi đọc file cache upload: " + e.getMessage());
+            }
+        }
+        return cache;
+    }
+
+    /**
+     * Lưu cache vào file properties.
+     */
+    private void saveUploadCache(Properties cache) {
+        try (OutputStream output = new FileOutputStream(CACHE_FILE_NAME)) {
+            cache.store(output, "Upload Session Cache");
+        } catch (IOException e) {
+            System.err.println("Lỗi lưu file cache upload: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Lấy sessionId đã lưu cho một file path. Dùng file path làm key.
+     */
+    private String getCachedSessionId(String filePath) {
+        Properties cache = loadUploadCache();
+        return cache.getProperty(filePath); // Trả về null nếu không có
+    }
+
+    /**
+     * Lưu sessionId cho một file path.
+     */
+    private void cacheSessionId(String filePath, String sessionId) {
+        Properties cache = loadUploadCache();
+        cache.setProperty(filePath, sessionId);
+        saveUploadCache(cache);
+    }
+
+    /**
+     * Xóa sessionId khỏi cache (khi upload xong hoặc thất bại).
+     */
+    private void removeCachedSessionId(String filePath) {
+        Properties cache = loadUploadCache();
+        cache.remove(filePath);
+        saveUploadCache(cache);
+    }
+
+//</editor-fold> //
 }

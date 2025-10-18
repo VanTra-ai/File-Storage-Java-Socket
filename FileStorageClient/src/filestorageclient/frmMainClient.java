@@ -340,15 +340,17 @@ public class frmMainClient extends javax.swing.JFrame {
 
                 @Override
                 protected String doInBackground() throws Exception {
-                    // CẬP NHẬT: Lấy folderId đang được chọn trên cây
-                    Integer targetFolderId = getSelectedFolderId(); // Gọi hàm mới để lấy ID
+                    // Lấy folderId đang được chọn trên cây
+                    Integer targetFolderId = getSelectedFolderId();
 
-                    // Truyền chính đối tượng worker này (với vai trò ProgressPublisher) và folderId vào manager.
-                    return clientManager.uploadFile(selectedFile, targetFolderId, this); // SỬA DÒNG NÀY
+                    // Gọi phương thức uploadFile mới trong ClientSocketManager
+                    // Nó sẽ tự xử lý việc gửi chunk
+                    return clientManager.uploadFile(selectedFile, targetFolderId, this);
                 }
 
                 @Override
                 protected void process(List<ClientSocketManager.ProgressData> chunks) {
+                    // Logic cập nhật progress bar vẫn giữ nguyên
                     ClientSocketManager.ProgressData latestData = chunks.get(chunks.size() - 1);
                     progressDialog.updateProgress(latestData.getPercentage());
 
@@ -364,32 +366,27 @@ public class frmMainClient extends javax.swing.JFrame {
 
                     try {
                         String uploadResult = get();
-                        if ("UPLOAD_SUCCESS".equals(uploadResult)) {
+
+                        // --- SỬA Ở ĐÂY: Kiểm tra mã thành công mới ---
+                        if ("UPLOAD_COMPLETE_SUCCESS".equals(uploadResult)) {
                             progressDialog.setStatusText("Upload Complete!");
                             JOptionPane.showMessageDialog(frmMainClient.this,
                                     String.format("Upload thành công!\nThời gian: %.2f giây", durationInSeconds));
 
-                            DefaultMutableTreeNode selectedNode = (DefaultMutableTreeNode) folderTree.getLastSelectedPathComponent();
-                            int folderIdToRefresh = -1; // Mặc định là gốc
-                            if (selectedNode != null && selectedNode.getUserObject() instanceof FolderNode) {
-                                FolderNode selectedFolder = (FolderNode) selectedNode.getUserObject();
-                                folderIdToRefresh = selectedFolder.getId();
-                            }
-
-                            // Gọi hàm tải file cho thư mục đó
-                            loadFilesForFolder(folderIdToRefresh);
-                            // --- KẾT THÚC SỬA ---
+                            // Làm mới danh sách file trong thư mục hiện tại
+                            refreshCurrentFolderView();
 
                         } else {
+                            // Hiển thị mã lỗi nhận được từ ClientSocketManager
                             JOptionPane.showMessageDialog(frmMainClient.this, "Upload thất bại: " + uploadResult, "Lỗi", JOptionPane.ERROR_MESSAGE);
                         }
                     } catch (Exception ex) {
                         logger.log(Level.SEVERE, "Lỗi khi Upload file", ex);
-                        JOptionPane.showMessageDialog(frmMainClient.this, "Lỗi nghiêm trọng khi upload: " + ex.getMessage(), "Lỗi", JOptionPane.ERROR_MESSAGE); // Thêm thông báo lỗi
+                        JOptionPane.showMessageDialog(frmMainClient.this, "Lỗi nghiêm trọng khi upload: " + ex.getMessage(), "Lỗi", JOptionPane.ERROR_MESSAGE);
                     } finally {
                         progressDialog.closeDialog();
                     }
-                }
+                } // Kết thúc done()
             }
 
             // Khởi tạo và thực thi worker
@@ -506,7 +503,7 @@ public class frmMainClient extends javax.swing.JFrame {
                         if ("DELETE_SUCCESS".equals(deleteResult)) {
                             JOptionPane.showMessageDialog(frmMainClient.this, "Đã xóa file '" + fileName + "' thành công!");
 
-                            refreshCurrentFolderView(); 
+                            refreshCurrentFolderView();
 
                         } else {
                             JOptionPane.showMessageDialog(frmMainClient.this, "Xóa file thất bại: " + deleteResult, "Lỗi", JOptionPane.ERROR_MESSAGE);
