@@ -1,9 +1,11 @@
 package filestorageserver.commands;
 
 import filestorageserver.ClientSession;
+import filestorageserver.FileServer;
 import filestorageserver.UploadSessionDAO;
 import filestorageserver.ServerActivityListener;
 import filestorageserver.model.UploadSession;
+import filestorageserver.UserDAO;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.File; // Sử dụng java.io.File
@@ -35,18 +37,53 @@ public class StartUploadCommandHandler implements CommandHandler {
             int targetFolderIdInt = dis.readInt();
             Integer targetFolderId = (targetFolderIdInt == -1) ? null : targetFolderIdInt;
 
-            // Kiểm tra tên file cơ bản (có thể thêm kiểm tra ký tự không hợp lệ)
-            if (fileName == null || fileName.trim().isEmpty() || fileName.contains("/") || fileName.contains("\\")) {
-                dos.writeUTF("UPLOAD_START_FAIL_INVALID_NAME");
+            // --- THÊM KIỂM TRA GIỚI HẠN ---
+            // 1. Kiểm tra kích thước file tối đa
+            if (totalSize > FileServer.MAX_FILE_SIZE_BYTES) { // Sử dụng hằng số từ FileServer
+                dos.writeUTF("UPLOAD_START_FAIL_FILE_TOO_LARGE");
+                dos.flush();
+                System.err.println("User " + session.getCurrentUserId() + " tried to upload file larger than limit: " + totalSize + " bytes");
+                return;
+            }
+            if (totalSize <= 0) { // Không cho upload file rỗng hoặc size âm
+                dos.writeUTF("UPLOAD_START_FAIL_INVALID_SIZE");
                 dos.flush();
                 return;
             }
 
-            // TODO: Kiểm tra dung lượng còn trống trên ổ đĩa nếu cần
-            // Đảm bảo thư mục tạm tồn tại
+            // 2. Kiểm tra dung lượng tài khoản
+            UserDAO userDAO = new UserDAO();
+            long currentUsage = userDAO.getStorageUsed(session.getCurrentUserId());
+            if (currentUsage == -1) { // Lỗi lấy dung lượng
+                dos.writeUTF("UPLOAD_START_FAIL_INTERNAL_ERROR");
+                dos.flush();
+                return;
+            }
+            if (currentUsage + totalSize > FileServer.USER_QUOTA_BYTES) { // Vượt quá quota
+                dos.writeUTF("UPLOAD_START_FAIL_QUOTA_EXCEEDED");
+                dos.flush();
+                System.err.println("User " + session.getCurrentUserId() + " quota exceeded. Current: " + currentUsage + ", Trying to add: " + totalSize);
+                return;
+            }
+
+            // 3. (Tùy chọn) Gửi cảnh báo nếu gần đầy
+            if ((currentUsage + totalSize) >= (FileServer.USER_QUOTA_BYTES * FileServer.QUOTA_WARNING_THRESHOLD)) {
+                System.out.println("CẢNH BÁO: User " + session.getCurrentUserId() + " is nearing quota limit.");
+                // Có thể gửi một mã đặc biệt về client nếu muốn client hiển thị cảnh báo
+                // dos.writeUTF("QUOTA_WARNING"); // Ví dụ
+            }
+            // Đảm bảo thư mục tạm tồn tại TRƯỚC KHI resolve file path
             Path tempDir = Paths.get(TEMP_UPLOAD_DIR);
             if (!Files.exists(tempDir)) {
-                Files.createDirectories(tempDir);
+                try {
+                    Files.createDirectories(tempDir);
+                    System.out.println("Đã tạo thư mục tạm: " + TEMP_UPLOAD_DIR);
+                } catch (IOException createDirEx) {
+                    System.err.println("Lỗi nghiêm trọng: Không thể tạo thư mục tạm: " + TEMP_UPLOAD_DIR);
+                    dos.writeUTF("UPLOAD_START_FAIL_INTERNAL_ERROR"); // Báo lỗi chung
+                    dos.flush();
+                    return;
+                }
             }
 
             // Tạo tên file tạm duy nhất

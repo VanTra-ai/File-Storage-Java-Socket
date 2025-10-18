@@ -21,6 +21,12 @@ public class FileServer {
     private static final int THREAD_POOL_SIZE = 10;
     private static final ExecutorService clientProcessingPool = Executors.newFixedThreadPool(THREAD_POOL_SIZE);
     private static final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+    // Giới hạn dung lượng mỗi tài khoản (1 GB)
+    public static final long USER_QUOTA_BYTES = 1 * 1024 * 1024 * 1024L; 
+    // Giới hạn kích thước file tối đa (200 MB)
+    public static final long MAX_FILE_SIZE_BYTES = 200 * 1024 * 1024L;
+    // Ngưỡng cảnh báo (90%)
+    public static final double QUOTA_WARNING_THRESHOLD = 0.9;
 
     /**
      * Phương thức chính khởi chạy toàn bộ server và giao diện Dashboard.

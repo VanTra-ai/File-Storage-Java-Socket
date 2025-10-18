@@ -120,27 +120,74 @@ public class FileDAO {
     }
 
     /**
-     * Xóa metadata của một file trong CSDL. Chỉ chủ sở hữu mới có quyền thực
-     * hiện.
+     * Xóa metadata của một file và trả về kích thước của file đó. Chỉ chủ sở
+     * hữu mới có quyền thực hiện.
      *
      * @param fileId ID của file cần xóa.
      * @param ownerId ID của người dùng yêu cầu xóa (phải là chủ sở hữu).
-     * @return true nếu xóa thành công, ngược lại là false.
+     * @return Kích thước file đã xóa (bytes) nếu thành công, 0 nếu không tìm
+     * thấy/không có quyền, -1 nếu có lỗi CSDL.
      */
-    public boolean deleteFileMetadata(int fileId, int ownerId) {
-        String sql = "DELETE FROM Files WHERE file_id = ? AND owner_id = ?";
-        try (Connection con = getConnection(); PreparedStatement ps = con.prepareStatement(sql)) {
+    public long deleteFileMetadata(int fileId, int ownerId) {
+        long fileSize = 0;
+        String selectSql = "SELECT file_size FROM files WHERE file_id = ? AND owner_id = ?";
+        String deleteSql = "DELETE FROM files WHERE file_id = ? AND owner_id = ?";
+        Connection con = null;
+
+        try {
+            con = getConnection();
             if (con == null) {
-                return false;
+                return -1; // Lỗi kết nối
+            }
+            con.setAutoCommit(false); // Bắt đầu transaction
+
+            // 1. Lấy kích thước file trước khi xóa
+            try (PreparedStatement psSelect = con.prepareStatement(selectSql)) {
+                psSelect.setInt(1, fileId);
+                psSelect.setInt(2, ownerId);
+                try (ResultSet rs = psSelect.executeQuery()) {
+                    if (rs.next()) {
+                        fileSize = rs.getLong("file_size");
+                    } else {
+                        // Không tìm thấy file hoặc không có quyền
+                        con.rollback(); // Hủy transaction
+                        return 0; // Trả về 0
+                    }
+                }
             }
 
-            ps.setInt(1, fileId);
-            ps.setInt(2, ownerId);
-            return ps.executeUpdate() > 0;
+            // 2. Thực hiện xóa
+            try (PreparedStatement psDelete = con.prepareStatement(deleteSql)) {
+                psDelete.setInt(1, fileId);
+                psDelete.setInt(2, ownerId);
+                int affectedRows = psDelete.executeUpdate();
+                if (affectedRows > 0) {
+                    con.commit(); // Hoàn tất transaction
+                    return fileSize; // Trả về kích thước file đã xóa
+                } else {
+                    // Lỗi không mong muốn (ví dụ: file bị xóa giữa chừng)
+                    con.rollback();
+                    return 0; // Coi như không xóa được
+                }
+            }
         } catch (SQLException ex) {
             System.err.println("Lỗi CSDL khi xóa metadata file: " + ex.getMessage());
+            try {
+                if (con != null) {
+                    con.rollback();
+                }
+            } catch (SQLException rbEx) {
+            }
+            return -1; // Lỗi CSDL
+        } finally {
+            try {
+                if (con != null) {
+                    con.setAutoCommit(true);
+                }
+            } catch (SQLException acEx) {
+            }
+            closeConnection(con);
         }
-        return false;
     }
 
     //<editor-fold defaultstate="collapsed" desc="Transactional Helper Methods">
@@ -484,7 +531,7 @@ public class FileDAO {
         }
     }
     // Trong FileDAO.java
-        
+
     /**
      * Di chuyển một file vào một thư mục mới.
      *

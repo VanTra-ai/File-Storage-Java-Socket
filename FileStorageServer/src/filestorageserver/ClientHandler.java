@@ -49,6 +49,7 @@ public class ClientHandler extends Thread {
         commandMap.put("CMD_UPLOAD_CHUNK", new UploadChunkCommandHandler());
         commandMap.put("CMD_COMPLETE_UPLOAD", new CompleteUploadCommandHandler());
         commandMap.put("CMD_GET_UPLOAD_STATUS", new GetUploadStatusCommandHandler());
+        commandMap.put("CMD_GET_STORAGE_INFO", new GetStorageInfoCommandHandler());
     }
 
     public ClientHandler(Socket socket, ServerActivityListener listener) {

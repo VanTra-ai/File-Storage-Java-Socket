@@ -358,7 +358,7 @@ public class ClientSocketManager {
             return "ERROR_IO_DOWNLOAD";
         }
     }
-   
+
     /**
      * Gửi yêu cầu tạo một thư mục mới.
      *
@@ -756,6 +756,52 @@ public class ClientSocketManager {
             this.totalItems = 0;
             this.totalPages = 0;
             this.currentPage = 1;
+        }
+    }
+
+    /**
+     * Gửi yêu cầu lấy thông tin dung lượng lưu trữ.
+     *
+     * @return Mảng long[used, total] nếu thành công, null nếu lỗi.
+     */
+    public long[] getStorageInfo() { // Đổi kiểu trả về thành long[]
+        if (!isLoggedIn()) {
+            System.err.println("Lỗi getStorageInfo: Chưa đăng nhập");
+            return null;
+        }
+        if (!isConnected && !connect()) {
+            System.err.println("Lỗi getStorageInfo: Không thể kết nối");
+            return null;
+        }
+
+        try {
+            dos.writeUTF("CMD_GET_STORAGE_INFO");
+            dos.flush();
+            String response = dis.readUTF(); // Đọc phản hồi (ví dụ: STORAGE_INFO)
+
+            if ("STORAGE_INFO".equals(response)) { // Kiểm tra chính xác chuỗi này
+                try {
+                    long used = dis.readLong(); // Đọc dung lượng đã dùng
+                    long total = dis.readLong(); // Đọc dung lượng tổng
+                    return new long[]{used, total}; // Trả về mảng chứa dữ liệu
+                } catch (IOException readDataEx) {
+                    System.err.println("Lỗi đọc dữ liệu storage info sau khi nhận STORAGE_INFO: " + readDataEx.getMessage());
+                    // Stream có thể lỗi, nên ngắt kết nối
+                    handleIOException(readDataEx, "READ_STORAGE_DATA");
+                    return null;
+                }
+            } else {
+                System.err.println("Lỗi lấy STORAGE_INFO, server trả về: " + response); // Ghi log mã lỗi
+                return null; // Trả về null khi có lỗi từ server
+            }
+
+        } catch (IOException e) {
+            handleIOException(e, "CMD_GET_STORAGE_INFO");
+            return null; // Trả về null khi có lỗi IO
+        } catch (Exception e) { // Bắt các lỗi khác
+            System.err.println("Lỗi không xác định khi gọi getStorageInfo: " + e.getMessage());
+            e.printStackTrace();
+            return null;
         }
     }
 }

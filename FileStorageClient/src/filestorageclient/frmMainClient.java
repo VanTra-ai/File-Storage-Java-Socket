@@ -4,6 +4,7 @@
  */
 package filestorageclient;
 
+import java.awt.Color;
 import java.io.File;
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
@@ -57,6 +58,7 @@ public class frmMainClient extends javax.swing.JFrame {
         // Thêm hành động cho Delete
         deleteItem.addActionListener(e -> handleDeleteFolder());
         folderContextMenu.add(deleteItem);
+        loadInitialStorageInfo();
 
         // Thêm MouseListener để hiển thị menu khi chuột phải
         folderTree.addMouseListener(new MouseAdapter() {
@@ -419,18 +421,35 @@ public class frmMainClient extends javax.swing.JFrame {
                     try {
                         String uploadResult = get();
 
-                        // --- SỬA Ở ĐÂY: Kiểm tra mã thành công mới ---
                         if ("UPLOAD_COMPLETE_SUCCESS".equals(uploadResult)) {
                             progressDialog.setStatusText("Upload Complete!");
                             JOptionPane.showMessageDialog(frmMainClient.this,
                                     String.format("Upload thành công!\nThời gian: %.2f giây", durationInSeconds));
 
-                            // Làm mới danh sách file trong thư mục hiện tại
+                            // Làm mới danh sách file và thông tin dung lượng
                             refreshCurrentFolderView();
+                            loadInitialStorageInfo();
 
                         } else {
-                            // Hiển thị mã lỗi nhận được từ ClientSocketManager
-                            JOptionPane.showMessageDialog(frmMainClient.this, "Upload thất bại: " + uploadResult, "Lỗi", JOptionPane.ERROR_MESSAGE);
+                            String errorMessage;
+                            switch (uploadResult) {
+                                case "UPLOAD_START_FAIL_FILE_TOO_LARGE":
+                                    errorMessage = "File quá lớn! Kích thước tối đa cho phép là 200 MB.";
+                                    break;
+                                case "UPLOAD_START_FAIL_QUOTA_EXCEEDED":
+                                    errorMessage = "Đã hết dung lượng lưu trữ tài khoản (Giới hạn 1 GB).";
+                                    break;
+                                case "UPLOAD_START_FAIL_INVALID_SIZE":
+                                    errorMessage = "Không thể upload file rỗng hoặc có kích thước không hợp lệ.";
+                                    break;
+                                case "CHUNK_FAIL_OFFSET_MISMATCH":
+                                    errorMessage = "Lỗi đồng bộ (offset mismatch). Vui lòng thử lại.";
+                                    break;
+                                default:
+                                    errorMessage = "Upload thất bại: " + uploadResult;
+                                    break;
+                            }
+                            JOptionPane.showMessageDialog(frmMainClient.this, errorMessage, "Lỗi Upload", JOptionPane.ERROR_MESSAGE);
                         }
                     } catch (Exception ex) {
                         logger.log(Level.SEVERE, "Lỗi khi Upload file", ex);
@@ -504,7 +523,22 @@ public class frmMainClient extends javax.swing.JFrame {
                             JOptionPane.showMessageDialog(frmMainClient.this,
                                     String.format("Tải file thành công!\nThời gian: %.2f giây", durationInSeconds));
                         } else {
-                            JOptionPane.showMessageDialog(frmMainClient.this, "Tải file thất bại: " + downloadResult, "Lỗi", JOptionPane.ERROR_MESSAGE);
+                            String errorMessage;
+                            switch (downloadResult) {
+                                case "DOWNLOAD_FAIL_AUTH":
+                                    errorMessage = "Tải file thất bại: Bạn không có quyền tải file này.";
+                                    break;
+                                case "DOWNLOAD_FAIL_NOT_FOUND":
+                                    errorMessage = "Tải file thất bại: File không còn tồn tại trên server.";
+                                    break;
+                                case "DOWNLOAD_FAIL_INCOMPLETE":
+                                    errorMessage = "Tải file thất bại: File tải về không hoàn chỉnh.";
+                                    break;
+                                default:
+                                    errorMessage = "Tải file thất bại: " + downloadResult;
+                                    break;
+                            }
+                            JOptionPane.showMessageDialog(frmMainClient.this, errorMessage, "Lỗi Download", JOptionPane.ERROR_MESSAGE);
                         }
                     } catch (Exception ex) {
                         logger.log(Level.SEVERE, "Lỗi khi Download file", ex);
@@ -556,9 +590,21 @@ public class frmMainClient extends javax.swing.JFrame {
                             JOptionPane.showMessageDialog(frmMainClient.this, "Đã xóa file '" + fileName + "' thành công!");
 
                             refreshCurrentFolderView();
-
+                            loadInitialStorageInfo();
                         } else {
-                            JOptionPane.showMessageDialog(frmMainClient.this, "Xóa file thất bại: " + deleteResult, "Lỗi", JOptionPane.ERROR_MESSAGE);
+                            String errorMessage;
+                            switch (deleteResult) {
+                                case "DELETE_FAIL_NOT_FOUND_OR_AUTH":
+                                    errorMessage = "Xóa file thất bại: Không tìm thấy file hoặc bạn không có quyền xóa.";
+                                    break;
+                                case "DELETE_FAIL_DB_ERROR":
+                                    errorMessage = "Xóa file thất bại: Đã xảy ra lỗi CSDL.";
+                                    break;
+                                default:
+                                    errorMessage = "Xóa file thất bại: " + deleteResult;
+                                    break;
+                            }
+                            JOptionPane.showMessageDialog(frmMainClient.this, errorMessage, "Lỗi Xóa File", JOptionPane.ERROR_MESSAGE);
                         }
                     } catch (Exception ex) {
                         logger.log(Level.SEVERE, "Lỗi khi Xóa file", ex);
@@ -707,7 +753,19 @@ public class frmMainClient extends javax.swing.JFrame {
                             }
 
                         } else {
-                            JOptionPane.showMessageDialog(frmMainClient.this, "Tạo thư mục thất bại: " + response, "Lỗi", JOptionPane.ERROR_MESSAGE);
+                            String errorMessage;
+                            switch (response) {
+                                case "CREATE_FOLDER_FAIL_NAME_EXIST":
+                                    errorMessage = "Tạo thư mục thất bại: Tên này đã tồn tại.";
+                                    break;
+                                case "CREATE_FOLDER_FAIL_EMPTY_NAME":
+                                    errorMessage = "Tạo thư mục thất bại: Tên không được để trống.";
+                                    break;
+                                default:
+                                    errorMessage = "Tạo thư mục thất bại: " + response;
+                                    break;
+                            }
+                            JOptionPane.showMessageDialog(frmMainClient.this, errorMessage, "Lỗi", JOptionPane.ERROR_MESSAGE);
                         }
                     } catch (Exception ex) {
                         logger.log(Level.SEVERE, "Lỗi khi tạo thư mục", ex);
@@ -761,7 +819,22 @@ public class frmMainClient extends javax.swing.JFrame {
 
                             JOptionPane.showMessageDialog(frmMainClient.this, "Đổi tên thành công!");
                         } else {
-                            JOptionPane.showMessageDialog(frmMainClient.this, "Đổi tên thất bại: " + response, "Lỗi", JOptionPane.ERROR_MESSAGE);
+                            String errorMessage;
+                            switch (response) {
+                                case "RENAME_FOLDER_FAIL_NOT_FOUND_OR_AUTH":
+                                    errorMessage = "Đổi tên thất bại: Không tìm thấy thư mục hoặc bạn không có quyền.";
+                                    break;
+                                case "RENAME_FOLDER_FAIL_DB_OR_NAME_EXIST":
+                                    errorMessage = "Đổi tên thất bại: Tên này đã tồn tại hoặc đã xảy ra lỗi CSDL.";
+                                    break;
+                                case "RENAME_FOLDER_FAIL_EMPTY_NAME":
+                                    errorMessage = "Đổi tên thất bại: Tên không được để trống.";
+                                    break;
+                                default:
+                                    errorMessage = "Đổi tên thất bại: " + response;
+                                    break;
+                            }
+                            JOptionPane.showMessageDialog(frmMainClient.this, errorMessage, "Lỗi Đổi Tên", JOptionPane.ERROR_MESSAGE);
                         }
                     } catch (Exception ex) {
                         logger.log(Level.SEVERE, "Lỗi khi đổi tên thư mục", ex);
@@ -833,7 +906,22 @@ public class frmMainClient extends javax.swing.JFrame {
                             }
 
                         } else {
-                            JOptionPane.showMessageDialog(frmMainClient.this, "Xóa thư mục thất bại: " + response, "Lỗi", JOptionPane.ERROR_MESSAGE);
+                            String errorMessage;
+                            switch (response) {
+                                case "DELETE_FOLDER_FAIL_ROOT":
+                                    errorMessage = "Xóa thư mục thất bại: Không thể xóa thư mục gốc.";
+                                    break;
+                                case "DELETE_FOLDER_FAIL_NOT_FOUND_OR_AUTH":
+                                    errorMessage = "Xóa thư mục thất bại: Không tìm thấy thư mục hoặc bạn không có quyền.";
+                                    break;
+                                case "DELETE_FOLDER_FAIL_DB_ERROR":
+                                    errorMessage = "Xóa thư mục thất bại: Lỗi CSDL (Thư mục có thể cần rỗng, hoặc file/thư mục con đang bị khóa).";
+                                    break;
+                                default:
+                                    errorMessage = "Xóa thư mục thất bại: " + response;
+                                    break;
+                            }
+                            JOptionPane.showMessageDialog(frmMainClient.this, errorMessage, "Lỗi Xóa Thư Mục", JOptionPane.ERROR_MESSAGE);
                         }
                     } catch (Exception ex) {
                         logger.log(Level.SEVERE, "Lỗi khi xóa thư mục", ex);
@@ -862,6 +950,76 @@ public class frmMainClient extends javax.swing.JFrame {
         }
 
         loadFilesForFolder(folderIdToRefresh);
+    }
+
+    /**
+     * Tải thông tin dung lượng ban đầu khi mở form.
+     */
+    private void loadInitialStorageInfo() {
+        new SwingWorker<long[], Void>() { // Kiểu trả về là long[]
+            @Override
+            protected long[] doInBackground() throws Exception {
+                // Gọi trực tiếp hàm mới trả về long[] hoặc null
+                long[] storageData = clientManager.getStorageInfo();
+                return storageData; // Trả về mảng hoặc null
+            }
+
+            @Override
+            protected void done() {
+                try {
+                    long[] storageInfo = get(); // Lấy mảng long[] hoặc null
+                    if (storageInfo != null && storageInfo.length == 2) {
+                        // Nếu thành công, cập nhật hiển thị
+                        updateStorageDisplay(storageInfo[0], storageInfo[1]);
+                    } else {
+                        // Ghi log lỗi (đã được ghi chi tiết hơn ở ClientSocketManager)
+                        System.err.println("frmMainClient: Không thể lấy thông tin dung lượng từ server.");
+                        updateStorageDisplay(-1, -1); // Hiển thị N/A khi lỗi
+                    }
+                } catch (Exception e) {
+                    logger.log(Level.SEVERE, "Lỗi nghiêm trọng khi xử lý kết quả storage info", e); // Sửa log lỗi
+                    updateStorageDisplay(-1, -1);
+                }
+            }
+        }.execute();
+    }
+
+    /**
+     * Cập nhật JLabel hiển thị thông tin dung lượng.
+     *
+     * @param usedBytes Dung lượng đã dùng.
+     * @param totalBytes Dung lượng tổng.
+     */
+    private void updateStorageDisplay(long usedBytes, long totalBytes) {
+        if (usedBytes < 0 || totalBytes <= 0) {
+            lblStorageInfo.setText("Storage: N/A");
+            return;
+        }
+        // Chuyển đổi sang MB hoặc GB để dễ đọc
+        String usedStr;
+        String totalStr;
+        double usedMB = (double) usedBytes / (1024 * 1024);
+        double totalMB = (double) totalBytes / (1024 * 1024);
+
+        if (totalMB >= 1024) { // Hiển thị GB nếu > 1GB
+            usedStr = String.format("%.2f GB", usedMB / 1024);
+            totalStr = String.format("%.2f GB", totalMB / 1024);
+        } else { // Hiển thị MB
+            usedStr = String.format("%.1f MB", usedMB);
+            totalStr = String.format("%.1f MB", totalMB);
+        }
+
+        // Tính phần trăm
+        int percentage = (int) Math.round(((double) usedBytes * 100) / totalBytes);
+
+        lblStorageInfo.setText(String.format("Storage: %s / %s (%d%%)", usedStr, totalStr, percentage));
+
+        // (Tùy chọn) Đổi màu nếu gần đầy
+        if (percentage >= 90) {
+            lblStorageInfo.setForeground(Color.RED);
+        } else {
+            lblStorageInfo.setForeground(Color.BLACK); // Hoặc màu mặc định
+        }
     }
 
     private String formatSize(long bytes) {
@@ -899,6 +1057,7 @@ public class frmMainClient extends javax.swing.JFrame {
         lblPageInfo = new javax.swing.JLabel();
         btnNextPage = new javax.swing.JButton();
         cmbSortBy = new javax.swing.JComboBox<>();
+        lblStorageInfo = new javax.swing.JLabel();
 
         setDefaultCloseOperation(javax.swing.WindowConstants.EXIT_ON_CLOSE);
         setTitle("Quản lý File - File Storage Client");
@@ -991,42 +1150,48 @@ public class frmMainClient extends javax.swing.JFrame {
             }
         });
 
+        lblStorageInfo.setText("Storage: Loading...");
+
         javax.swing.GroupLayout layout = new javax.swing.GroupLayout(getContentPane());
         getContentPane().setLayout(layout);
         layout.setHorizontalGroup(
             layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
             .addGroup(layout.createSequentialGroup()
                 .addGap(43, 43, 43)
-                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
-                    .addComponent(jSplitPane2, javax.swing.GroupLayout.DEFAULT_SIZE, 822, Short.MAX_VALUE)
+                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                     .addGroup(layout.createSequentialGroup()
-                        .addGap(0, 0, Short.MAX_VALUE)
-                        .addComponent(cmbSortBy, javax.swing.GroupLayout.PREFERRED_SIZE, 121, javax.swing.GroupLayout.PREFERRED_SIZE)
-                        .addGap(82, 82, 82)
-                        .addComponent(lblWelcome)
-                        .addGap(39, 39, 39)
-                        .addComponent(btnLogout)))
-                .addGap(34, 34, 34))
-            .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, layout.createSequentialGroup()
-                .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
+                        .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                            .addGroup(layout.createSequentialGroup()
+                                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 536, Short.MAX_VALUE)
+                                .addComponent(btnPrevPage)
+                                .addGap(29, 29, 29)
+                                .addComponent(lblPageInfo, javax.swing.GroupLayout.PREFERRED_SIZE, 77, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                                .addComponent(btnNextPage))
+                            .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, layout.createSequentialGroup()
+                                .addComponent(lblStorageInfo)
+                                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                                .addComponent(btnNewFolder)
+                                .addGap(37, 37, 37)
+                                .addComponent(btnUpload)
+                                .addGap(18, 18, 18)
+                                .addComponent(btnDownload)
+                                .addGap(18, 18, 18)
+                                .addComponent(btnShare)
+                                .addGap(45, 45, 45)
+                                .addComponent(btnDelete)))
+                        .addGap(61, 61, 61))
                     .addGroup(layout.createSequentialGroup()
-                        .addComponent(btnPrevPage)
-                        .addGap(29, 29, 29)
-                        .addComponent(lblPageInfo, javax.swing.GroupLayout.PREFERRED_SIZE, 77, javax.swing.GroupLayout.PREFERRED_SIZE)
-                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                        .addComponent(btnNextPage))
-                    .addGroup(layout.createSequentialGroup()
-                        .addComponent(btnNewFolder)
-                        .addGap(37, 37, 37)
-                        .addComponent(btnUpload)
-                        .addGap(18, 18, 18)
-                        .addComponent(btnDownload)
-                        .addGap(18, 18, 18)
-                        .addComponent(btnShare)
-                        .addGap(45, 45, 45)
-                        .addComponent(btnDelete)))
-                .addGap(61, 61, 61))
+                        .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
+                            .addComponent(jSplitPane2, javax.swing.GroupLayout.DEFAULT_SIZE, 822, Short.MAX_VALUE)
+                            .addGroup(layout.createSequentialGroup()
+                                .addGap(0, 0, Short.MAX_VALUE)
+                                .addComponent(cmbSortBy, javax.swing.GroupLayout.PREFERRED_SIZE, 121, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                .addGap(82, 82, 82)
+                                .addComponent(lblWelcome)
+                                .addGap(39, 39, 39)
+                                .addComponent(btnLogout)))
+                        .addGap(34, 34, 34))))
         );
         layout.setVerticalGroup(
             layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
@@ -1044,7 +1209,8 @@ public class frmMainClient extends javax.swing.JFrame {
                     .addComponent(btnDownload)
                     .addComponent(btnDelete)
                     .addComponent(btnShare)
-                    .addComponent(btnNewFolder))
+                    .addComponent(btnNewFolder)
+                    .addComponent(lblStorageInfo))
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
                 .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
                     .addComponent(btnPrevPage)
@@ -1126,6 +1292,7 @@ public class frmMainClient extends javax.swing.JFrame {
     private javax.swing.JScrollPane jScrollPane1;
     private javax.swing.JSplitPane jSplitPane2;
     private javax.swing.JLabel lblPageInfo;
+    private javax.swing.JLabel lblStorageInfo;
     private javax.swing.JLabel lblWelcome;
     // End of variables declaration//GEN-END:variables
 }

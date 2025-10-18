@@ -6,6 +6,7 @@ import filestorageserver.FileDAO; // Cần FileDAO để tạo metadata cuối c
 import filestorageserver.ServerActivityListener;
 import filestorageserver.model.File; // Model File chính
 import filestorageserver.model.UploadSession;
+import filestorageserver.UserDAO;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
@@ -94,10 +95,15 @@ public class CompleteUploadCommandHandler implements CommandHandler {
                 dos.writeUTF("UPLOAD_COMPLETE_SUCCESS");
                 dos.writeInt(newFileId);
 
-                // Cập nhật session là COMPLETE (hoặc xóa session)
-                sessionDAO.finalizeSessionStatus(sessionId, "COMPLETE");
-                // Hoặc: sessionDAO.deleteSession(sessionId);
+                UserDAO userDAO = new UserDAO();
+                boolean usageUpdated = userDAO.updateStorageUsed(session.getCurrentUserId(), currentSession.getTotalSize()); // Cộng thêm kích thước file
+                if (!usageUpdated) {
+                    // Lỗi nghiêm trọng: Không cập nhật được dung lượng sau khi upload!
+                    System.err.println("LỖI NGHIÊM TRỌNG: Không thể cập nhật storage_used cho user " + session.getCurrentUserId() + " sau khi upload file ID " + newFileId);
+                    // Có thể cần cơ chế rollback hoặc báo cáo?
+                }
 
+                sessionDAO.finalizeSessionStatus(sessionId, "COMPLETE");
                 listener.onFileUploaded(session.getCurrentUsername(), currentSession.getFileName());
                 System.out.println("Hoàn tất upload session: " + sessionId + ", File ID mới: " + newFileId);
             } else {

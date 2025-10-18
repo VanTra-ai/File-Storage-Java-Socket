@@ -277,5 +277,56 @@ public class UserDAO {
         }
         return false;
     }
+
     //</editor-fold>
+    /**
+     * Lấy dung lượng lưu trữ đã sử dụng của người dùng.
+     *
+     * @param userId ID người dùng.
+     * @return Dung lượng đã sử dụng (bytes), hoặc -1 nếu lỗi.
+     */
+    public long getStorageUsed(int userId) {
+        String sql = "SELECT storage_used FROM users WHERE user_id = ?";
+        try (Connection con = getConnection(); PreparedStatement ps = con.prepareStatement(sql)) {
+
+            if (con == null) {
+                return -1;
+            }
+            ps.setInt(1, userId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getLong("storage_used");
+                }
+            }
+        } catch (SQLException ex) {
+            System.err.println("Lỗi CSDL khi lấy storage_used: " + ex.getMessage());
+        }
+        return -1; // Lỗi hoặc không tìm thấy user
+    }
+
+    /**
+     * Cập nhật dung lượng lưu trữ đã sử dụng cho người dùng. Có thể dùng số
+     * dương (cộng thêm khi upload) hoặc số âm (trừ đi khi xóa).
+     *
+     * @param userId ID người dùng.
+     * @param changeInBytes Lượng thay đổi (dương hoặc âm).
+     * @return true nếu cập nhật thành công.
+     */
+    public boolean updateStorageUsed(int userId, long changeInBytes) {
+        // Dùng phép toán cộng trực tiếp trong SQL để đảm bảo an toàn concurrency
+        String sql = "UPDATE users SET storage_used = storage_used + ? WHERE user_id = ?";
+        try (Connection con = getConnection(); PreparedStatement ps = con.prepareStatement(sql)) {
+
+            if (con == null) {
+                return false;
+            }
+            ps.setLong(1, changeInBytes);
+            ps.setInt(2, userId);
+            return ps.executeUpdate() > 0;
+        } catch (SQLException ex) {
+            // Có thể cần xử lý lỗi nếu storage_used < 0 (dù không nên xảy ra)
+            System.err.println("Lỗi CSDL khi cập nhật storage_used: " + ex.getMessage());
+            return false;
+        }
+    }
 }
