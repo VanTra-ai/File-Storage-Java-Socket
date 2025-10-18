@@ -100,4 +100,46 @@ public interface ServerActivityListener {
      * @param fileName Tên file liên quan.
      */
     void onShareUpdated(String updater, String receiver, String fileName);
+
+    /**
+     * Được gọi khi một thư mục mới được tạo.
+     *
+     * @param username Tên người dùng thực hiện.
+     * @param folderName Tên thư mục đã tạo.
+     */
+    void onFolderCreated(String username, String folderName);
+
+    /**
+     * Được gọi khi một file được di chuyển sang thư mục khác.
+     *
+     * @param username Tên người dùng thực hiện.
+     * @param fileName Tên file đã di chuyển.
+     * @param targetFolderId ID thư mục đích (null nếu ra gốc).
+     */
+    void onFileMoved(String username, String fileName, Integer targetFolderId);
+
+    /**
+     * Được gọi khi một thư mục được di chuyển sang thư mục khác.
+     *
+     * @param username Tên người dùng thực hiện.
+     * @param folderName Tên thư mục đã di chuyển.
+     * @param targetFolderId ID thư mục đích (null nếu ra gốc).
+     */
+    void onFolderMoved(String username, String folderName, Integer targetFolderId);
+    /**
+     * Được gọi khi một thư mục được đổi tên thành công.
+     *
+     * @param username Tên người dùng thực hiện.
+     * @param oldFolderName Tên thư mục cũ.
+     * @param newFolderName Tên thư mục mới.
+     */
+    void onFolderRenamed(String username, String oldFolderName, String newFolderName);
+
+    /**
+     * Được gọi khi một thư mục bị xóa thành công.
+     *
+     * @param username Tên người dùng thực hiện.
+     * @param folderName Tên thư mục đã bị xóa.
+     */
+    void onFolderDeleted(String username, String folderName);
 }

@@ -40,7 +40,8 @@ public class frmShareFile extends javax.swing.JFrame {
             public void windowClosed(WindowEvent e) {
                 if (parentForm != null) {
                     parentForm.setEnabled(true);
-                    parentForm.loadFileList();
+                    parentForm.refreshCurrentFolderView();
+                    parentForm.requestFocus();
                 }
             }
         });

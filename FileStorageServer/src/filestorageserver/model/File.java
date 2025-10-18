@@ -73,6 +73,8 @@ public class File {
     /**
      * Constructor đầy đủ để khởi tạo một đối tượng File.
      */
+    private Integer folderId;
+
     public File(int fileId, int ownerId, String fileName, String filePath, long fileSize, String fileType, Timestamp uploadedAt, Timestamp lastModified, boolean isShared) {
         this.fileId = fileId;
         this.ownerId = ownerId;
@@ -172,6 +174,14 @@ public class File {
 
     public void setSharerName(String sharerName) {
         this.sharerName = sharerName;
+    }
+
+    public Integer getFolderId() {
+        return folderId;
+    }
+
+    public void setFolderId(Integer folderId) {
+        this.folderId = folderId;
     }
     //</editor-fold>
 }

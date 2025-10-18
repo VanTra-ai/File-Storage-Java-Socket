@@ -30,11 +30,17 @@ public class UploadCommandHandler implements CommandHandler {
         }
 
         String fullFilePath = null;
+        Integer targetFolderId = null; // CẬP NHẬT: Thêm biến này
+
         try {
             // Bước 1: Đọc metadata của file từ client
             String originalFileName = dis.readUTF();
             long fileSize = dis.readLong();
             String fileType = dis.readUTF();
+
+            // CẬP NHẬT: Đọc folderId từ client (-1 cho gốc)
+            int folderIdInt = dis.readInt();
+            targetFolderId = (folderIdInt == -1) ? null : folderIdInt;
 
             // Tạo tên file duy nhất và an toàn để lưu trữ trên server
             String uniqueName = UUID.randomUUID().toString() + "_" + originalFileName.replaceAll("[^a-zA-Z0-9.-]", "_");
@@ -49,7 +55,7 @@ public class UploadCommandHandler implements CommandHandler {
 
             // Bước 2: Nhận nội dung file vật lý và ghi ra ổ đĩa
             try (FileOutputStream fos = new FileOutputStream(fullFilePath)) {
-                byte[] buffer = new byte[8192]; // Bộ đệm 8KB
+                byte[] buffer = new byte[8192];
                 int bytesRead;
                 long totalBytesRead = 0;
 
@@ -72,34 +78,45 @@ public class UploadCommandHandler implements CommandHandler {
             fileMetadata.setFileSize(fileSize);
             fileMetadata.setFileType(fileType);
             fileMetadata.setIsShared(false);
+            fileMetadata.setFolderId(targetFolderId); // CẬP NHẬT: Set folderId vào metadata
 
             FileDAO fileDAO = new FileDAO();
             int fileId = fileDAO.insertFileMetadata(fileMetadata);
 
             if (fileId != -1) {
                 dos.writeUTF("UPLOAD_SUCCESS");
-                dos.writeInt(fileId);
+                dos.writeInt(fileId); // Gửi lại fileId
+                dos.flush(); // CẬP NHẬT: Flush sau khi gửi
                 System.out.println("User " + session.getCurrentUsername() + " đã upload thành công: " + originalFileName);
-                // --- THÔNG BÁO SỰ KIỆN UPLOAD THÀNH CÔNG ---
                 listener.onFileUploaded(session.getCurrentUsername(), originalFileName);
             } else {
-                // Nếu không lưu được vào CSDL, xóa file vật lý đã tạo để tránh rác
                 dos.writeUTF("UPLOAD_FAIL_DB");
+                dos.flush(); // CẬP NHẬT: Flush sau khi gửi
                 new java.io.File(fullFilePath).delete();
                 System.err.println("Lỗi CSDL khi chèn metadata. Đã xóa file vật lý: " + fullFilePath);
             }
         } catch (IOException e) {
             System.err.println("Lỗi I/O khi xử lý upload từ user " + session.getCurrentUsername() + ": " + e.getMessage());
-            // Xóa file đang upload dở nếu có lỗi xảy ra
             if (fullFilePath != null) {
                 new java.io.File(fullFilePath).delete();
             }
-            // Ném lại ngoại lệ để ClientHandler biết và đóng kết nối an toàn
-            throw e;
+            // Gửi lỗi về client nếu có thể
+            try {
+                dos.writeUTF("UPLOAD_FAIL_IO_ERROR");
+                dos.flush();
+            } catch (IOException ignored) {
+            }
+            // Ném lại ngoại lệ để ClientHandler biết và đóng kết nối an toàn (hoặc không ném nếu muốn giữ kết nối)
+            // throw e; // Tùy chọn: Bỏ comment nếu muốn đóng kết nối khi lỗi IO upload
         } catch (Exception e) {
             System.err.println("Lỗi không xác định khi upload: " + e.getMessage());
             e.printStackTrace();
-            dos.writeUTF("UPLOAD_FAIL_SERVER_ERROR");
+            // Gửi lỗi về client nếu có thể
+            try {
+                dos.writeUTF("UPLOAD_FAIL_SERVER_ERROR");
+                dos.flush();
+            } catch (IOException ignored) {
+            }
             if (fullFilePath != null) {
                 new java.io.File(fullFilePath).delete();
             }

@@ -9,6 +9,7 @@ import java.sql.Statement;
 import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.List;
+import java.sql.Types;
 
 /**
  * Lớp Data Access Object (DAO) cho các thao tác liên quan đến file. Chịu trách
@@ -38,19 +39,30 @@ public class FileDAO {
      * @return ID của file vừa được tạo, hoặc -1 nếu thất bại.
      */
     public int insertFileMetadata(File file) {
-        String sql = "INSERT INTO Files (owner_id, file_name, file_path, file_size, mime_type, created_at, is_shared) VALUES (?, ?, ?, ?, ?, NOW(), ?)";
+        // SỬA SQL: Thêm cột 'folder_id'
+        String sql = "INSERT INTO Files (owner_id, folder_id, file_name, file_path, file_size, mime_type, created_at, is_shared) VALUES (?, ?, ?, ?, ?, ?, NOW(), ?)";
         int generatedFileId = -1;
         try (Connection con = getConnection(); PreparedStatement ps = con.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+
             if (con == null) {
                 return -1;
             }
 
             ps.setInt(1, file.getOwnerId());
-            ps.setString(2, file.getFileName());
-            ps.setString(3, file.getFilePath());
-            ps.setLong(4, file.getFileSize());
-            ps.setString(5, file.getFileType());
-            ps.setBoolean(6, file.isIsShared());
+
+            // THÊM DÒNG NÀY:
+            if (file.getFolderId() != null) {
+                ps.setInt(2, file.getFolderId());
+            } else {
+                ps.setNull(2, Types.INTEGER);
+            }
+
+            // ĐẨY CHỈ SỐ CÁC CỘT CÒN LẠI LÊN 1
+            ps.setString(3, file.getFileName());
+            ps.setString(4, file.getFilePath());
+            ps.setLong(5, file.getFileSize());
+            ps.setString(6, file.getFileType());
+            ps.setBoolean(7, file.isIsShared()); // Chỉ số cột này tăng từ 6 lên 7
 
             if (ps.executeUpdate() > 0) {
                 try (ResultSet rs = ps.getGeneratedKeys()) {
@@ -104,54 +116,6 @@ public class FileDAO {
             System.err.println("Lỗi CSDL khi lấy file để download: " + e.getMessage());
         }
         return file;
-    }
-
-    /**
-     * Lấy danh sách tất cả file mà người dùng có thể thấy (file sở hữu và file
-     * được chia sẻ).
-     *
-     * @param userId ID của người dùng.
-     * @return Một List các đối tượng File, hoặc null nếu có lỗi CSDL.
-     */
-    public List<File> listUserFiles(int userId) {
-        List<File> files = new ArrayList<>();
-        String sql = "SELECT file_id, file_name, file_size, created_at, owner_id, 0 AS is_shared_to_me, NULL AS sharer_name FROM files WHERE owner_id = ? UNION ALL SELECT f.file_id, f.file_name, f.file_size, f.created_at, f.owner_id, 1 AS is_shared_to_me, u.username AS sharer_name FROM files f JOIN file_shares fs ON f.file_id = fs.file_id JOIN users u ON fs.shared_by_user_id = u.user_id WHERE fs.shared_with_user_id = ? ORDER BY created_at DESC";
-
-        Connection conn = null;
-        try {
-            conn = getConnection();
-            if (conn == null) {
-                System.err.println("Không thể lấy kết nối CSDL trong listUserFiles.");
-                return null;
-            }
-
-            try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                ps.setInt(1, userId);
-                ps.setInt(2, userId);
-                try (ResultSet rs = ps.executeQuery()) {
-                    while (rs.next()) {
-                        File file = new File();
-                        file.setFileId(rs.getInt("file_id"));
-                        file.setFileName(rs.getString("file_name"));
-                        file.setFileSize(rs.getLong("file_size"));
-                        file.setUploadedAt(rs.getTimestamp("created_at"));
-                        file.setOwnerId(rs.getInt("owner_id"));
-                        file.setIsSharedToMe(rs.getInt("is_shared_to_me") == 1);
-                        String sharerName = rs.getString("sharer_name");
-                        file.setSharerName(sharerName != null ? sharerName : "");
-                        files.add(file);
-                    }
-                }
-            }
-        } catch (SQLException e) {
-            System.err.println("Lỗi CSDL khi liệt kê file: " + e.getMessage());
-            return null;
-        } finally {
-            if (conn != null) {
-                closeConnection(conn);
-            }
-        }
-        return files;
     }
 
     /**
@@ -517,5 +481,151 @@ public class FileDAO {
         if (affectedRows > 0) {
             System.out.println("Đã dọn dẹp " + affectedRows + " chia sẻ hết hạn.");
         }
+    }
+    // Trong FileDAO.java
+
+    /**
+     * Lấy danh sách file CỦA CHỦ SỞ HỮU trong một thư mục cụ thể.
+     *
+     * @param ownerId ID người sở hữu.
+     * @param folderId ID thư mục (null = lấy file ở gốc).
+     * @return List các đối tượng File (chỉ file sở hữu).
+     */
+    public List<File> getFilesByFolder(int ownerId, Integer folderId) {
+        List<File> files = new ArrayList<>();
+        String sql;
+
+        if (folderId == null) {
+            sql = "SELECT file_id, file_name, file_size, created_at, owner_id FROM files WHERE owner_id = ? AND folder_id IS NULL ORDER BY file_name";
+        } else {
+            sql = "SELECT file_id, file_name, file_size, created_at, owner_id FROM files WHERE owner_id = ? AND folder_id = ? ORDER BY file_name";
+        }
+
+        try (Connection con = getConnection(); PreparedStatement ps = con.prepareStatement(sql)) {
+
+            if (con == null) {
+                return null;
+            }
+
+            ps.setInt(1, ownerId);
+            if (folderId != null) {
+                ps.setInt(2, folderId);
+            }
+
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    File file = new File();
+                    file.setFileId(rs.getInt("file_id"));
+                    file.setFileName(rs.getString("file_name"));
+                    file.setFileSize(rs.getLong("file_size"));
+                    file.setUploadedAt(rs.getTimestamp("created_at"));
+                    file.setOwnerId(rs.getInt("owner_id"));
+                    file.setIsSharedToMe(false); // Đây là file sở hữu
+                    file.setSharerName("");
+                    files.add(file);
+                }
+            }
+        } catch (SQLException e) {
+            System.err.println("Lỗi CSDL khi liệt kê file theo thư mục: " + e.getMessage());
+            return null;
+        }
+        return files;
+    }
+
+    /**
+     * Lấy danh sách file ĐƯỢC CHIA SẺ VỚI BẠN (chỉ hiển thị ở thư mục gốc).
+     *
+     * @param userId ID của người dùng (người nhận chia sẻ).
+     * @return List các đối tượng File (chỉ file được chia sẻ).
+     */
+    public List<File> getSharedFilesForUser(int userId) {
+        List<File> files = new ArrayList<>();
+        String sql = "SELECT f.file_id, f.file_name, f.file_size, f.created_at, f.owner_id, u.username AS sharer_name "
+                + "FROM files f "
+                + "JOIN file_shares fs ON f.file_id = fs.file_id "
+                + "JOIN users u ON fs.shared_by_user_id = u.user_id "
+                + "WHERE fs.shared_with_user_id = ? "
+                + "ORDER BY fs.shared_at DESC";
+
+        try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
+
+            if (conn == null) {
+                return null;
+            }
+
+            ps.setInt(1, userId);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    File file = new File();
+                    file.setFileId(rs.getInt("file_id"));
+                    file.setFileName(rs.getString("file_name"));
+                    file.setFileSize(rs.getLong("file_size"));
+                    file.setUploadedAt(rs.getTimestamp("created_at"));
+                    file.setOwnerId(rs.getInt("owner_id"));
+                    file.setIsSharedToMe(true); // Đây là file được chia sẻ
+                    file.setSharerName(rs.getString("sharer_name"));
+                    files.add(file);
+                }
+            }
+        } catch (SQLException e) {
+            System.err.println("Lỗi CSDL khi lấy file được chia sẻ: " + e.getMessage());
+            return null;
+        }
+        return files;
+    }
+
+    /**
+     * Di chuyển một file vào một thư mục mới.
+     *
+     * @param fileId ID file cần di chuyển.
+     * @param newFolderId ID thư mục cha mới (null = di chuyển ra gốc).
+     * @param ownerId ID người sở hữu (để xác thực).
+     * @return true nếu thành công.
+     */
+    public boolean moveFile(int fileId, Integer newFolderId, int ownerId) {
+        String sql = "UPDATE files SET folder_id = ? WHERE file_id = ? AND owner_id = ?";
+        try (Connection con = getConnection(); PreparedStatement ps = con.prepareStatement(sql)) {
+
+            if (con == null) {
+                return false;
+            }
+
+            if (newFolderId != null) {
+                ps.setInt(1, newFolderId);
+            } else {
+                ps.setNull(1, Types.INTEGER);
+            }
+            ps.setInt(2, fileId);
+            ps.setInt(3, ownerId);
+
+            return ps.executeUpdate() > 0;
+        } catch (SQLException ex) {
+            System.err.println("Lỗi CSDL khi di chuyển file: " + ex.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Lấy tên file dựa trên ID (dùng cho mục đích log).
+     */
+    public String getFileNameById(int fileId, int ownerId) {
+        String sql = "SELECT file_name FROM files WHERE file_id = ? AND owner_id = ?";
+        try (Connection con = getConnection(); PreparedStatement ps = con.prepareStatement(sql)) {
+
+            if (con == null) {
+                return null;
+            }
+            ps.setInt(1, fileId);
+            ps.setInt(2, ownerId);
+
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getString("file_name");
+                }
+            }
+        } catch (SQLException ex) {
+            System.err.println("Lỗi CSDL khi lấy tên file: " + ex.getMessage());
+        }
+        return null; // Không tìm thấy hoặc lỗi
     }
 }

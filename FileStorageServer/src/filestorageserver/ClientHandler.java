@@ -23,21 +23,29 @@ public class ClientHandler extends Thread {
 
     private static final Map<String, CommandHandler> commandMap = new HashMap<>();
     private static final ComplexCommandHandler complexCommandHandler = new ComplexCommandHandler();
-    
+
     public static final String STATUS_UPLOADING = "Uploading...";
     public static final String STATUS_DOWNLOADING = "Downloading...";
     public static final String STATUS_LISTING = "Listing Files...";
     public static final String STATUS_DELETING = "Deleting...";
     public static final String STATUS_SHARING = "Sharing...";
     public static final String STATUS_AUTHENTICATED = "Authenticated";
+    public static final String STATUS_CREATING_FOLDER = "Creating Folder...";
+    public static final String STATUS_MOVING = "Moving Item...";
+
     // Khối static khởi tạo map một lần duy nhất, ánh xạ chuỗi lệnh tới lớp xử lý của nó.
     static {
         commandMap.put("CMD_LOGIN", new LoginCommandHandler());
         commandMap.put("CMD_REGISTER", new RegisterCommandHandler());
         commandMap.put("CMD_UPLOAD", new UploadCommandHandler());
         commandMap.put("CMD_DOWNLOAD", new DownloadCommandHandler());
-        commandMap.put("CMD_LISTFILES", new ListFilesCommandHandler());
         commandMap.put("CMD_DELETE", new DeleteCommandHandler());
+        commandMap.put("CMD_GET_FOLDERS", new GetFoldersCommandHandler());
+        commandMap.put("CMD_GET_FILES_IN_FOLDER", new GetFilesInFolderCommandHandler());
+        commandMap.put("CMD_CREATE_FOLDER", new CreateFolderCommandHandler());
+        commandMap.put("CMD_MOVE_ITEM", new MoveItemCommandHandler());
+        commandMap.put("CMD_RENAME_FOLDER", new RenameFolderCommandHandler());
+        commandMap.put("CMD_DELETE_FOLDER", new DeleteFolderCommandHandler());
     }
 
     public ClientHandler(Socket socket, ServerActivityListener listener) {
@@ -45,7 +53,7 @@ public class ClientHandler extends Thread {
         this.listener = listener;
         this.session = new ClientSession(this); // Truyền 'this' vào session để có tham chiếu ngược
     }
-    
+
     public Socket getClientSocket() {
         return clientSocket;
     }
@@ -128,6 +136,12 @@ public class ClientHandler extends Thread {
                     break;
                 case "CMD_DELETE":
                     newStatus = STATUS_DELETING;
+                    break;
+                case "CMD_CREATE_FOLDER":
+                    newStatus = STATUS_CREATING_FOLDER;
+                    break;
+                case "CMD_MOVE_ITEM":
+                    newStatus = STATUS_MOVING;
                     break;
             }
         } else if (command.startsWith("SHARE") || command.startsWith("UNSHARE") || command.startsWith("CHANGE_PERM")) {

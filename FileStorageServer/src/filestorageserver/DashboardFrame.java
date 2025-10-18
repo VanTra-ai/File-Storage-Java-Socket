@@ -111,6 +111,33 @@ public class DashboardFrame extends javax.swing.JFrame implements ServerActivity
     public void onShareUpdated(String updater, String receiver, String fileName) {
         addLogMessage(String.format("User '%s' updated share permissions for '%s' on file '%s'", updater, receiver, fileName));
     }
+
+    @Override
+    public void onFolderCreated(String username, String folderName) {
+        addLogMessage(String.format("User '%s' created folder: '%s'", username, folderName));
+    }
+
+    @Override
+    public void onFileMoved(String username, String fileName, Integer targetFolderId) {
+        String target = (targetFolderId == null) ? "Root" : "Folder [ID: " + targetFolderId + "]";
+        addLogMessage(String.format("User '%s' moved file '%s' to %s", username, fileName, target));
+    }
+
+    @Override
+    public void onFolderMoved(String username, String folderName, Integer targetFolderId) {
+        String target = (targetFolderId == null) ? "Root" : "Folder [ID: " + targetFolderId + "]";
+        addLogMessage(String.format("User '%s' moved folder '%s' to %s", username, folderName, target));
+    }
+
+    @Override
+    public void onFolderRenamed(String username, String oldFolderName, String newFolderName) {
+        addLogMessage(String.format("User '%s' renamed folder '%s' to '%s'", username, oldFolderName, newFolderName));
+    }
+
+    @Override
+    public void onFolderDeleted(String username, String folderName) {
+        addLogMessage(String.format("User '%s' deleted folder: '%s'", username, folderName));
+    }
     //</editor-fold>
 
     private void updateRowIndexesAfterRemoval(int removedIndex) {
