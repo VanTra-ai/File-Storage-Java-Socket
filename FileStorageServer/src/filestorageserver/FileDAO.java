@@ -10,6 +10,7 @@ import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.List;
 import java.sql.Types;
+import filestorageserver.model.PagedResult;
 
 /**
  * Lớp Data Access Object (DAO) cho các thao tác liên quan đến file. Chịu trách
@@ -483,97 +484,7 @@ public class FileDAO {
         }
     }
     // Trong FileDAO.java
-
-    /**
-     * Lấy danh sách file CỦA CHỦ SỞ HỮU trong một thư mục cụ thể.
-     *
-     * @param ownerId ID người sở hữu.
-     * @param folderId ID thư mục (null = lấy file ở gốc).
-     * @return List các đối tượng File (chỉ file sở hữu).
-     */
-    public List<File> getFilesByFolder(int ownerId, Integer folderId) {
-        List<File> files = new ArrayList<>();
-        String sql;
-
-        if (folderId == null) {
-            sql = "SELECT file_id, file_name, file_size, created_at, owner_id FROM files WHERE owner_id = ? AND folder_id IS NULL ORDER BY file_name";
-        } else {
-            sql = "SELECT file_id, file_name, file_size, created_at, owner_id FROM files WHERE owner_id = ? AND folder_id = ? ORDER BY file_name";
-        }
-
-        try (Connection con = getConnection(); PreparedStatement ps = con.prepareStatement(sql)) {
-
-            if (con == null) {
-                return null;
-            }
-
-            ps.setInt(1, ownerId);
-            if (folderId != null) {
-                ps.setInt(2, folderId);
-            }
-
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    File file = new File();
-                    file.setFileId(rs.getInt("file_id"));
-                    file.setFileName(rs.getString("file_name"));
-                    file.setFileSize(rs.getLong("file_size"));
-                    file.setUploadedAt(rs.getTimestamp("created_at"));
-                    file.setOwnerId(rs.getInt("owner_id"));
-                    file.setIsSharedToMe(false); // Đây là file sở hữu
-                    file.setSharerName("");
-                    files.add(file);
-                }
-            }
-        } catch (SQLException e) {
-            System.err.println("Lỗi CSDL khi liệt kê file theo thư mục: " + e.getMessage());
-            return null;
-        }
-        return files;
-    }
-
-    /**
-     * Lấy danh sách file ĐƯỢC CHIA SẺ VỚI BẠN (chỉ hiển thị ở thư mục gốc).
-     *
-     * @param userId ID của người dùng (người nhận chia sẻ).
-     * @return List các đối tượng File (chỉ file được chia sẻ).
-     */
-    public List<File> getSharedFilesForUser(int userId) {
-        List<File> files = new ArrayList<>();
-        String sql = "SELECT f.file_id, f.file_name, f.file_size, f.created_at, f.owner_id, u.username AS sharer_name "
-                + "FROM files f "
-                + "JOIN file_shares fs ON f.file_id = fs.file_id "
-                + "JOIN users u ON fs.shared_by_user_id = u.user_id "
-                + "WHERE fs.shared_with_user_id = ? "
-                + "ORDER BY fs.shared_at DESC";
-
-        try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
-
-            if (conn == null) {
-                return null;
-            }
-
-            ps.setInt(1, userId);
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    File file = new File();
-                    file.setFileId(rs.getInt("file_id"));
-                    file.setFileName(rs.getString("file_name"));
-                    file.setFileSize(rs.getLong("file_size"));
-                    file.setUploadedAt(rs.getTimestamp("created_at"));
-                    file.setOwnerId(rs.getInt("owner_id"));
-                    file.setIsSharedToMe(true); // Đây là file được chia sẻ
-                    file.setSharerName(rs.getString("sharer_name"));
-                    files.add(file);
-                }
-            }
-        } catch (SQLException e) {
-            System.err.println("Lỗi CSDL khi lấy file được chia sẻ: " + e.getMessage());
-            return null;
-        }
-        return files;
-    }
-
+        
     /**
      * Di chuyển một file vào một thư mục mới.
      *
@@ -602,6 +513,214 @@ public class FileDAO {
         } catch (SQLException ex) {
             System.err.println("Lỗi CSDL khi di chuyển file: " + ex.getMessage());
             return false;
+        }
+    }
+
+    /**
+     * Lấy danh sách file sở hữu trong thư mục theo trang và sắp xếp.
+     *
+     * @param ownerId ID chủ sở hữu.
+     * @param folderId ID thư mục (null = gốc).
+     * @param pageNumber Trang hiện tại (từ 1).
+     * @param pageSize Số file/trang.
+     * @param sortBy Chuỗi sắp xếp ("name_asc", "size_desc", "date_desc"). Mặc
+     * định "name_asc".
+     * @return PagedResult chứa danh sách file và thông tin phân trang, hoặc
+     * null nếu lỗi.
+     */
+    public PagedResult<File> getFilesByFolder(int ownerId, Integer folderId, int pageNumber, int pageSize, String sortBy) {
+        List<File> files = new ArrayList<>();
+        long totalFiles = 0;
+        String baseSql = "FROM files WHERE owner_id = ?";
+        String countSql = "SELECT COUNT(*) " + baseSql;
+        String selectSql = "SELECT file_id, file_name, file_size, created_at, owner_id " + baseSql; // Chỉ lấy cột cần thiết
+
+        // Điều kiện thư mục
+        if (folderId == null) {
+            countSql += " AND folder_id IS NULL";
+            selectSql += " AND folder_id IS NULL";
+        } else {
+            countSql += " AND folder_id = ?";
+            selectSql += " AND folder_id = ?";
+        }
+
+        // Sắp xếp
+        String orderByClause = " ORDER BY ";
+        if ("size_asc".equalsIgnoreCase(sortBy)) {
+            orderByClause += "file_size ASC, file_name ASC";
+        } else if ("size_desc".equalsIgnoreCase(sortBy)) {
+            orderByClause += "file_size DESC, file_name ASC";
+        } else if ("date_asc".equalsIgnoreCase(sortBy)) {
+            orderByClause += "created_at ASC, file_name ASC";
+        } else if ("date_desc".equalsIgnoreCase(sortBy)) {
+            orderByClause += "created_at DESC, file_name ASC";
+        } else { // Mặc định name_asc
+            orderByClause += "file_name ASC";
+        }
+        selectSql += orderByClause;
+
+        // Phân trang
+        if (pageSize > 0 && pageNumber > 0) {
+            selectSql += " LIMIT ? OFFSET ?";
+        }
+
+        Connection con = null;
+        try {
+            con = getConnection();
+            if (con == null) {
+                return null;
+            }
+
+            // 1. Đếm tổng số file
+            try (PreparedStatement psCount = con.prepareStatement(countSql)) {
+                int paramIndex = 1;
+                psCount.setInt(paramIndex++, ownerId);
+                if (folderId != null) {
+                    psCount.setInt(paramIndex++, folderId);
+                }
+                try (ResultSet rsCount = psCount.executeQuery()) {
+                    if (rsCount.next()) {
+                        totalFiles = rsCount.getLong(1);
+                    }
+                }
+            }
+
+            // 2. Lấy file của trang hiện tại
+            if (totalFiles > 0) {
+                try (PreparedStatement psSelect = con.prepareStatement(selectSql)) {
+                    int paramIndex = 1;
+                    psSelect.setInt(paramIndex++, ownerId);
+                    if (folderId != null) {
+                        psSelect.setInt(paramIndex++, folderId);
+                    }
+                    if (pageSize > 0 && pageNumber > 0) {
+                        psSelect.setInt(paramIndex++, pageSize);
+                        psSelect.setInt(paramIndex++, (pageNumber - 1) * pageSize);
+                    }
+
+                    try (ResultSet rs = psSelect.executeQuery()) {
+                        while (rs.next()) {
+                            File file = new File();
+                            file.setFileId(rs.getInt("file_id"));
+                            file.setFileName(rs.getString("file_name"));
+                            file.setFileSize(rs.getLong("file_size"));
+                            file.setUploadedAt(rs.getTimestamp("created_at"));
+                            file.setOwnerId(rs.getInt("owner_id"));
+                            file.setIsSharedToMe(false); // File sở hữu
+                            file.setSharerName("");
+                            files.add(file);
+                        }
+                    }
+                }
+            }
+            // 3. Trả về kết quả
+            return new PagedResult<>(files, totalFiles, pageNumber, pageSize);
+
+        } catch (SQLException ex) {
+            System.err.println("Lỗi CSDL khi lấy file theo thư mục (phân trang): " + ex.getMessage());
+            return null;
+        } finally {
+            closeConnection(con);
+        }
+    }
+
+    /**
+     * Lấy danh sách file được chia sẻ theo trang và sắp xếp (luôn ở gốc).
+     *
+     * @param userId ID người nhận chia sẻ.
+     * @param pageNumber Trang hiện tại (từ 1).
+     * @param pageSize Số file/trang.
+     * @param sortBy Chuỗi sắp xếp ("name_asc", "size_desc", "date_desc",
+     * "sharer_asc"). Mặc định "date_desc".
+     * @return PagedResult chứa danh sách file và thông tin phân trang, hoặc
+     * null nếu lỗi.
+     */
+    public PagedResult<File> getSharedFilesForUser(int userId, int pageNumber, int pageSize, String sortBy) {
+        List<File> files = new ArrayList<>();
+        long totalFiles = 0;
+        String baseSelect = "SELECT f.file_id, f.file_name, f.file_size, f.created_at, f.owner_id, u.username AS sharer_name ";
+        String baseFromWhere = "FROM files f "
+                + "JOIN file_shares fs ON f.file_id = fs.file_id "
+                + "JOIN users u ON fs.shared_by_user_id = u.user_id "
+                + "WHERE fs.shared_with_user_id = ? ";
+
+        String countSql = "SELECT COUNT(*) " + baseFromWhere;
+        String selectSql = baseSelect + baseFromWhere;
+
+        // Sắp xếp
+        String orderByClause = " ORDER BY ";
+        if ("name_asc".equalsIgnoreCase(sortBy)) {
+            orderByClause += "f.file_name ASC";
+        } else if ("name_desc".equalsIgnoreCase(sortBy)) {
+            orderByClause += "f.file_name DESC";
+        } else if ("size_asc".equalsIgnoreCase(sortBy)) {
+            orderByClause += "f.file_size ASC, f.file_name ASC";
+        } else if ("size_desc".equalsIgnoreCase(sortBy)) {
+            orderByClause += "f.file_size DESC, f.file_name ASC";
+        } else if ("sharer_asc".equalsIgnoreCase(sortBy)) {
+            orderByClause += "sharer_name ASC, f.file_name ASC";
+        } else if ("sharer_desc".equalsIgnoreCase(sortBy)) {
+            orderByClause += "sharer_name DESC, f.file_name ASC";
+        } else { // Mặc định date_desc (ngày chia sẻ)
+            orderByClause += "fs.shared_at DESC";
+        }
+        selectSql += orderByClause;
+
+        // Phân trang
+        if (pageSize > 0 && pageNumber > 0) {
+            selectSql += " LIMIT ? OFFSET ?";
+        }
+
+        Connection conn = null;
+        try {
+            conn = getConnection();
+            if (conn == null) {
+                return null;
+            }
+
+            // 1. Đếm tổng số file
+            try (PreparedStatement psCount = conn.prepareStatement(countSql)) {
+                psCount.setInt(1, userId);
+                try (ResultSet rsCount = psCount.executeQuery()) {
+                    if (rsCount.next()) {
+                        totalFiles = rsCount.getLong(1);
+                    }
+                }
+            }
+
+            // 2. Lấy file của trang hiện tại
+            if (totalFiles > 0) {
+                try (PreparedStatement psSelect = conn.prepareStatement(selectSql)) {
+                    int paramIndex = 1;
+                    psSelect.setInt(paramIndex++, userId);
+                    if (pageSize > 0 && pageNumber > 0) {
+                        psSelect.setInt(paramIndex++, pageSize);
+                        psSelect.setInt(paramIndex++, (pageNumber - 1) * pageSize);
+                    }
+
+                    try (ResultSet rs = psSelect.executeQuery()) {
+                        while (rs.next()) {
+                            File file = new File();
+                            file.setFileId(rs.getInt("file_id"));
+                            file.setFileName(rs.getString("file_name"));
+                            file.setFileSize(rs.getLong("file_size"));
+                            file.setUploadedAt(rs.getTimestamp("created_at"));
+                            file.setOwnerId(rs.getInt("owner_id"));
+                            file.setIsSharedToMe(true); // File được chia sẻ
+                            file.setSharerName(rs.getString("sharer_name"));
+                            files.add(file);
+                        }
+                    }
+                }
+            }
+            // 3. Trả về kết quả
+            return new PagedResult<>(files, totalFiles, pageNumber, pageSize);
+
+        } catch (SQLException e) {
+            System.err.println("Lỗi CSDL khi lấy file được chia sẻ (phân trang): " + e.getMessage());
+            return null;
+        } finally {
+            closeConnection(conn);
         }
     }
 

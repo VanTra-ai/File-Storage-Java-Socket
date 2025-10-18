@@ -358,31 +358,7 @@ public class ClientSocketManager {
             return "ERROR_IO_DOWNLOAD";
         }
     }
-
-    /**
-     * Yêu cầu server gửi nội dung của một thư mục.
-     *
-     * @param folderId ID của thư mục cần lấy nội dung. Dùng null cho thư mục
-     * gốc.
-     * @return Chuỗi phản hồi từ server.
-     */
-    public String getFolderContent(Integer folderId) {
-        String command = "CMD_GET_FOLDER_CONTENT";
-        if (!isLoggedIn()) {
-            return "ERROR_NOT_LOGGED_IN";
-        }
-        try {
-            dos.writeUTF(command);
-            // Gửi -1 nếu là thư mục gốc, ngược lại gửi ID của thư mục
-            dos.writeInt(folderId == null ? -1 : folderId);
-            dos.flush();
-            return dis.readUTF();
-        } catch (IOException e) {
-            handleIOException(e, command);
-            return "ERROR_IO_COMMAND";
-        }
-    }
-
+   
     /**
      * Gửi yêu cầu tạo một thư mục mới.
      *
@@ -527,19 +503,49 @@ public class ClientSocketManager {
      *
      * @param parentFolderId ID của thư mục cha (-1 cho thư mục gốc)
      */
-    public String getFolders(int parentFolderId) {
+    public PagedResponse getFolders(int parentFolderId, int pageNumber, int pageSize, String sortBy) {
         if (!isLoggedIn()) {
-            return "ERROR_NOT_LOGGED_IN";
+            return new PagedResponse("ERROR_NOT_LOGGED_IN");
+        }
+        if (!isConnected && !connect()) {
+            return new PagedResponse("ERROR_CONNECTION");
         }
 
         try {
             dos.writeUTF("CMD_GET_FOLDERS");
             dos.writeInt(parentFolderId);
+            dos.writeInt(pageNumber);
+            dos.writeInt(pageSize);
+            dos.writeUTF(sortBy != null ? sortBy : "name_asc"); // Gửi sắp xếp mặc định nếu null
             dos.flush();
-            return dis.readUTF();
+            String response = dis.readUTF();
+
+            // Phân tích phản hồi mới: FOLDERLIST_PAGED_START:totalItems|totalPages|currentPage|data...
+            if (response.startsWith("FOLDERLIST_PAGED_START:")) {
+                String headerAndData = response.substring("FOLDERLIST_PAGED_START:".length());
+                String[] parts = headerAndData.split("\\|", 4); // Tách tối đa 4 phần
+                if (parts.length == 4) {
+                    try {
+                        long totalItems = Long.parseLong(parts[0]);
+                        int totalPages = Integer.parseInt(parts[1]);
+                        int currentPage = Integer.parseInt(parts[2]);
+                        String rawData = parts[3];
+                        return new PagedResponse("FOLDERLIST_PAGED_START", rawData, totalItems, totalPages, currentPage);
+                    } catch (NumberFormatException e) {
+                        System.err.println("Lỗi phân tích header phân trang thư mục: " + response);
+                        return new PagedResponse("ERROR_INVALID_PAGED_RESPONSE");
+                    }
+                } else {
+                    System.err.println("Định dạng phản hồi phân trang thư mục không đúng: " + response);
+                    return new PagedResponse("ERROR_INVALID_PAGED_RESPONSE");
+                }
+            } else {
+                // Trả về mã lỗi từ server
+                return new PagedResponse(response);
+            }
         } catch (IOException e) {
-            handleIOException(e, "CMD_GET_FOLDERS");
-            return "ERROR_IO_COMMAND";
+            handleIOException(e, "CMD_GET_FOLDERS (Paged)");
+            return new PagedResponse("ERROR_IO_COMMAND");
         }
     }
 
@@ -548,19 +554,48 @@ public class ClientSocketManager {
      *
      * @param folderId ID của thư mục (-1 cho thư mục gốc)
      */
-    public String getFilesInFolder(int folderId) {
+    public PagedResponse getFilesInFolder(int folderId, int pageNumber, int pageSize, String sortBy) {
         if (!isLoggedIn()) {
-            return "ERROR_NOT_LOGGED_IN";
+            return new PagedResponse("ERROR_NOT_LOGGED_IN");
+        }
+        if (!isConnected && !connect()) {
+            return new PagedResponse("ERROR_CONNECTION");
         }
 
         try {
             dos.writeUTF("CMD_GET_FILES_IN_FOLDER");
             dos.writeInt(folderId);
+            dos.writeInt(pageNumber);
+            dos.writeInt(pageSize);
+            dos.writeUTF(sortBy != null ? sortBy : "name_asc");
             dos.flush();
-            return dis.readUTF();
+            String response = dis.readUTF();
+
+            // Phân tích phản hồi mới: FILELIST_PAGED_START:totalItems|totalPages|currentPage|data...
+            if (response.startsWith("FILELIST_PAGED_START:")) {
+                String headerAndData = response.substring("FILELIST_PAGED_START:".length());
+                String[] parts = headerAndData.split("\\|", 4);
+                if (parts.length == 4) {
+                    try {
+                        long totalItems = Long.parseLong(parts[0]);
+                        int totalPages = Integer.parseInt(parts[1]);
+                        int currentPage = Integer.parseInt(parts[2]);
+                        String rawData = parts[3];
+                        return new PagedResponse("FILELIST_PAGED_START", rawData, totalItems, totalPages, currentPage);
+                    } catch (NumberFormatException e) {
+                        System.err.println("Lỗi phân tích header phân trang file: " + response);
+                        return new PagedResponse("ERROR_INVALID_PAGED_RESPONSE");
+                    }
+                } else {
+                    System.err.println("Định dạng phản hồi phân trang file không đúng: " + response);
+                    return new PagedResponse("ERROR_INVALID_PAGED_RESPONSE");
+                }
+            } else {
+                return new PagedResponse(response); // Trả về mã lỗi
+            }
         } catch (IOException e) {
-            handleIOException(e, "CMD_GET_FILES_IN_FOLDER");
-            return "ERROR_IO_COMMAND";
+            handleIOException(e, "CMD_GET_FILES_IN_FOLDER (Paged)");
+            return new PagedResponse("ERROR_IO_COMMAND");
         }
     }
 
@@ -692,6 +727,35 @@ public class ClientSocketManager {
         cache.remove(filePath);
         saveUploadCache(cache);
     }
-
 //</editor-fold> //
+
+    /**
+     * Lớp nội để đóng gói kết quả phân trang trả về từ server. Chứa danh sách
+     * item dưới dạng chuỗi thô và thông tin phân trang.
+     */
+    public static class PagedResponse {
+
+        public final String rawData; // Chuỗi dữ liệu dạng "item1;item2;..."
+        public final long totalItems;
+        public final int totalPages;
+        public final int currentPage;
+        public final String responseCode; // Mã phản hồi gốc (ví dụ: FOLDERLIST_PAGED_START)
+
+        public PagedResponse(String responseCode, String rawData, long totalItems, int totalPages, int currentPage) {
+            this.responseCode = responseCode;
+            this.rawData = rawData;
+            this.totalItems = totalItems;
+            this.totalPages = totalPages;
+            this.currentPage = currentPage;
+        }
+
+        // Constructor cho trường hợp lỗi hoặc không có dữ liệu
+        public PagedResponse(String responseCode) {
+            this.responseCode = responseCode;
+            this.rawData = "";
+            this.totalItems = 0;
+            this.totalPages = 0;
+            this.currentPage = 1;
+        }
+    }
 }

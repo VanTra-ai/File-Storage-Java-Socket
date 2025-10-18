@@ -8,6 +8,7 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.util.List;
+import filestorageserver.model.PagedResult;
 
 /**
  * Xử lý lệnh CMD_GET_FOLDERS để lấy danh sách thư mục con.
@@ -18,42 +19,63 @@ public class GetFoldersCommandHandler implements CommandHandler {
     public void handle(ClientSession session, DataInputStream dis, DataOutputStream dos, ServerActivityListener listener) throws IOException {
         if (!session.isLoggedIn()) {
             dos.writeUTF("ERROR_NOT_LOGGED_IN");
+            dos.flush(); // Thêm flush
             return;
         }
 
         try {
-            // Đọc parentFolderId từ client. Client sẽ gửi -1 nếu muốn lấy thư mục gốc.
-            int parentFolderIdInt = dis.readInt();
+            int parentFolderIdInt = dis.readInt();      // ID thư mục cha (-1 = gốc)
+            int pageNumber = dis.readInt();          // Trang muốn lấy (ví dụ: 1)
+            int pageSize = dis.readInt();            // Số item/trang (ví dụ: 20)
+            String sortBy = dis.readUTF();             // Tiêu chí sắp xếp (ví dụ: "name_asc")
+
             Integer parentFolderId = (parentFolderIdInt == -1) ? null : parentFolderIdInt;
 
+            // Đảm bảo giá trị hợp lệ
+            if (pageNumber < 1) {
+                pageNumber = 1;
+            }
+            if (pageSize <= 0) {
+                pageSize = 20; // Giá trị mặc định nếu client gửi không hợp lệ
+            }
             FolderDAO folderDAO = new FolderDAO();
-            List<Folder> folders = folderDAO.getFoldersByParent(session.getCurrentUserId(), parentFolderId);
+            PagedResult<Folder> pagedResult = folderDAO.getFoldersByParent(session.getCurrentUserId(), parentFolderId, pageNumber, pageSize, sortBy);
 
-            if (folders == null) {
+            if (pagedResult == null) {
                 dos.writeUTF("FOLDERLIST_FAIL_SERVER_ERROR");
-                System.err.println("Lỗi: getFoldersByParent trả về null cho User: " + session.getCurrentUserId());
+                System.err.println("Lỗi: getFoldersByParent (paged) trả về null cho User: " + session.getCurrentUserId());
+                dos.flush();
                 return;
             }
 
-            // Xây dựng chuỗi phản hồi: FOLDERLIST_START:id|name;id|name;...
-            StringBuilder response = new StringBuilder("FOLDERLIST_START:");
-            for (Folder folder : folders) {
+            StringBuilder response = new StringBuilder("FOLDERLIST_PAGED_START:");
+            response.append(pagedResult.getTotalItems()).append("|")
+                    .append(pagedResult.getTotalPages()).append("|")
+                    .append(pagedResult.getCurrentPage()).append("|"); // Thêm thông tin phân trang
+
+            // Nối dữ liệu thư mục
+            for (Folder folder : pagedResult.getItems()) {
                 response.append(folder.getFolderId()).append("|")
                         .append(folder.getFolderName()).append(";");
             }
 
             dos.writeUTF(response.toString());
-            dos.flush();
 
+        } catch (IOException streamEx) {
+            System.err.println("Lỗi đọc stream get folders (paged) từ client: " + streamEx.getMessage());
+            throw streamEx; // Ném lại để ClientHandler đóng kết nối
         } catch (Exception e) {
-            System.err.println("Lỗi khi lấy danh sách thư mục cho User " + session.getCurrentUserId() + ": " + e.getMessage());
+            System.err.println("Lỗi khi lấy danh sách thư mục (paged) cho User " + session.getCurrentUserId() + ": " + e.getMessage());
             e.printStackTrace();
-            try { 
+            try {
                 dos.writeUTF("FOLDERLIST_FAIL_INTERNAL_ERROR");
-                dos.flush();
-            } catch (IOException ioEx) {
-                System.err.println("Không thể gửi lỗi về client: " + ioEx.getMessage());
+            } catch (IOException ignored) {
             }
+        } finally {
+            try {
+                dos.flush();
+            } catch (IOException ignored) {
+            } 
         }
     }
 }

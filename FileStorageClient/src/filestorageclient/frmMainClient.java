@@ -34,6 +34,10 @@ public class frmMainClient extends javax.swing.JFrame {
     private static final Logger logger = Logger.getLogger(frmMainClient.class.getName());
     private DefaultTreeModel treeModel;
     private DefaultMutableTreeNode rootNode;
+    private int currentFilePage = 1;
+    private int totalFilePages = 1;
+    private String currentSortBy = "name_asc"; // Mặc định sắp xếp theo tên A-Z
+    private final int PAGE_SIZE = 10; // Số item mỗi trang, bạn có thể thay đổi
 
     public frmMainClient() {
         this.username = clientManager.getCurrentUsername();
@@ -124,19 +128,20 @@ public class frmMainClient extends javax.swing.JFrame {
         folderTree.addTreeSelectionListener(new TreeSelectionListener() {
             @Override
             public void valueChanged(TreeSelectionEvent e) {
-                // Lấy node được chọn
                 DefaultMutableTreeNode selectedNode = (DefaultMutableTreeNode) folderTree.getLastSelectedPathComponent();
-
-                // Nếu không có gì được chọn hoặc node không hợp lệ, thì không làm gì cả
                 if (selectedNode == null || !(selectedNode.getUserObject() instanceof FolderNode)) {
-                    tableModel.setRowCount(0); // Xóa bảng file
+                    tableModel.setRowCount(0);
+                    // Cập nhật phân trang khi không có gì chọn
+                    totalFilePages = 0;
+                    currentFilePage = 1;
+                    updatePaginationControls();
                     return;
                 }
 
-                // Lấy FolderNode từ node JTree
                 FolderNode selectedFolder = (FolderNode) selectedNode.getUserObject();
+                currentFilePage = 1;
 
-                // Gọi hàm để tải danh sách file cho thư mục này
+                // Gọi hàm tải file (nó sẽ dùng currentFilePage = 1)
                 loadFilesForFolder(selectedFolder.getId());
             }
         });
@@ -173,26 +178,34 @@ public class frmMainClient extends javax.swing.JFrame {
         int parentFolderId = parentFolder.getId();
 
         // Tải danh sách thư mục con trong một luồng nền
-        new SwingWorker<String, Void>() {
+        // Sửa kiểu trả về của SwingWorker thành PagedResponse
+        new SwingWorker<ClientSocketManager.PagedResponse, Void>() {
             @Override
-            protected String doInBackground() throws Exception {
-                // Gửi yêu cầu đến server
-                return clientManager.getFolders(parentFolderId);
+            protected ClientSocketManager.PagedResponse doInBackground() throws Exception {
+                // Gọi phiên bản mới với tham số phân trang/sắp xếp mặc định
+                // Trang 1, Kích thước rất lớn (để lấy hết), Sắp xếp theo tên
+                return clientManager.getFolders(parentFolderId, 1, Integer.MAX_VALUE, "name_asc");
             }
 
             @Override
             protected void done() {
                 try {
-                    String response = get();
-                    if (response.startsWith("FOLDERLIST_START:")) {
-                        String data = response.substring("FOLDERLIST_START:".length());
-                        if (data.isEmpty()) {
-                            return; // Không có thư mục con
-                        }
+                    // Lấy PagedResponse từ doInBackground
+                    ClientSocketManager.PagedResponse pagedResponse = get();
 
-                        // Xóa các node "đang tải..." (nếu có)
+                    // Kiểm tra responseCode trong đối tượng PagedResponse
+                    if ("FOLDERLIST_PAGED_START".equals(pagedResponse.responseCode)) {
+                        String data = pagedResponse.rawData; // Lấy dữ liệu thô
+
                         parentNode.removeAllChildren();
 
+                        if (data.isEmpty()) {
+                            // Không có thư mục con, báo cho model biết cấu trúc thay đổi để xóa icon expand
+                            treeModel.nodeStructureChanged(parentNode);
+                            return;
+                        }
+
+                        // Phân tích dữ liệu và thêm node con (logic giữ nguyên)
                         String[] folders = data.split(";");
                         for (String folderInfo : folders) {
                             if (folderInfo.trim().isEmpty()) {
@@ -200,97 +213,136 @@ public class frmMainClient extends javax.swing.JFrame {
                             }
 
                             String[] parts = folderInfo.split("\\|");
-                            int folderId = Integer.parseInt(parts[0]);
-                            String folderName = parts[1];
+                            if (parts.length == 2) { // Đảm bảo đúng định dạng id|name
+                                try {
+                                    int folderId = Integer.parseInt(parts[0]);
+                                    String folderName = parts[1];
 
-                            // Tạo node dữ liệu và node JTree
-                            FolderNode folder = new FolderNode(folderId, folderName);
-                            DefaultMutableTreeNode newNode = new DefaultMutableTreeNode(folder);
-
-                            // Thêm một node "Loading..." giả để người dùng biết là có thể mở rộng
-                            newNode.add(new DefaultMutableTreeNode("Loading..."));
-
-                            // Thêm node thư mục mới vào cây
-                            parentNode.add(newNode);
+                                    FolderNode folder = new FolderNode(folderId, folderName);
+                                    DefaultMutableTreeNode newNode = new DefaultMutableTreeNode(folder);
+                                    newNode.add(new DefaultMutableTreeNode("Loading...")); // Thêm placeholder
+                                    parentNode.add(newNode);
+                                } catch (NumberFormatException e) {
+                                    logger.log(Level.WARNING, "Lỗi parse folder info: " + folderInfo, e);
+                                }
+                            } else {
+                                logger.log(Level.WARNING, "Định dạng folder info không đúng: " + folderInfo);
+                            }
                         }
 
-                        // Cập nhật lại giao diện cây
-                        treeModel.reload(parentNode);
+                        // Cập nhật lại giao diện cây cho node cha
+                        treeModel.nodeStructureChanged(parentNode); // Dùng nodeStructureChanged thay vì reload để giữ trạng thái expand/collapse của các node cháu (nếu có)
 
-                    } else {
-                        logger.log(Level.WARNING, "Không thể tải thư mục: " + response);
+                    } else { // Xử lý lỗi (phản hồi không phải FOLDERLIST_PAGED_START)
+                        logger.log(Level.WARNING, "Không thể tải thư mục: " + pagedResponse.responseCode);
+                        parentNode.removeAllChildren(); // Xóa "Loading..." khi có lỗi
+                        treeModel.nodeStructureChanged(parentNode); // Cập nhật cây
+                        // Có thể hiển thị lỗi cho người dùng nếu muốn
+                        JOptionPane.showMessageDialog(frmMainClient.this, "Lỗi tải thư mục: " + pagedResponse.responseCode, "Lỗi", JOptionPane.ERROR_MESSAGE);
                     }
+
                 } catch (Exception ex) {
                     logger.log(Level.SEVERE, "Lỗi khi tải thư mục con", ex);
+                    parentNode.removeAllChildren(); // Xóa "Loading..." khi có lỗi nghiêm trọng
+                    treeModel.nodeStructureChanged(parentNode); // Cập nhật cây
+                    // Hiển thị lỗi nghiêm trọng
+                    JOptionPane.showMessageDialog(frmMainClient.this, "Lỗi nghiêm trọng khi tải thư mục: " + ex.getMessage(), "Lỗi", JOptionPane.ERROR_MESSAGE);
                 }
             }
         }.execute();
     }
 
     /**
-     * Tải danh sách file cho một thư mục cụ thể và cập nhật JTable.
+     * Tải danh sách file cho một thư mục cụ thể theo trang/sắp xếp và cập nhật
+     * JTable.
      *
      * @param folderId ID của thư mục (-1 cho thư mục gốc)
      */
     private void loadFilesForFolder(int folderId) {
-        tableModel.setRowCount(0); // Xóa dữ liệu cũ trên bảng
+        tableModel.setRowCount(0); // Xóa dữ liệu cũ
+        // Vô hiệu hóa nút khi đang tải
+        btnPrevPage.setEnabled(false);
+        btnNextPage.setEnabled(false);
+        lblPageInfo.setText("Loading...");
 
-        new SwingWorker<String, Void>() {
+        new SwingWorker<ClientSocketManager.PagedResponse, Void>() { // Sửa kiểu trả về
             @Override
-            protected String doInBackground() throws Exception {
-                // Gọi ClientSocketManager để lấy danh sách file
-                return clientManager.getFilesInFolder(folderId);
+            protected ClientSocketManager.PagedResponse doInBackground() throws Exception {
+                // Gọi ClientSocketManager với tham số phân trang/sắp xếp
+                return clientManager.getFilesInFolder(folderId, currentFilePage, PAGE_SIZE, currentSortBy);
             }
 
             @Override
             protected void done() {
                 try {
-                    String response = get();
-                    if (response.startsWith("FILELIST_START:")) {
-                        String data = response.substring("FILELIST_START:".length());
-                        if (data.isEmpty()) {
-                            return; // Thư mục rỗng
-                        }
+                    ClientSocketManager.PagedResponse pagedResponse = get(); // Lấy PagedResponse
 
-                        String[] files = data.split(";");
-                        for (String fileInfo : files) {
-                            if (fileInfo.trim().isEmpty()) {
-                                continue;
-                            }
+                    if ("FILELIST_PAGED_START".equals(pagedResponse.responseCode)) {
+                        totalFilePages = pagedResponse.totalPages; // Cập nhật tổng số trang
+                        currentFilePage = pagedResponse.currentPage; // Cập nhật trang hiện tại
 
-                            String[] parts = fileInfo.split("\\|", -1);
-                            if (parts.length == 6) {
-                                try {
-                                    long fileSize = Long.parseLong(parts[2]);
-                                    String formattedSize = formatSize(fileSize);
-                                    String sharerName = parts[5].isEmpty() ? "" : parts[5];
-
-                                    // Thêm hàng mới vào JTable
-                                    Object[] rowData = new Object[]{
-                                        parts[0], // File ID
-                                        parts[1], // File Name
-                                        formattedSize, // Formatted Size
-                                        parts[3], // Upload Date
-                                        parts[4], // Status (Owned/Shared)
-                                        sharerName // Sharer
-                                    };
-                                    tableModel.addRow(rowData);
-                                } catch (NumberFormatException e) {
-                                    logger.log(Level.WARNING, "Lỗi parse kích thước file: " + parts[2], e);
+                        String data = pagedResponse.rawData;
+                        if (!data.isEmpty()) {
+                            // Logic phân tích chuỗi và thêm vào tableModel giữ nguyên
+                            String[] files = data.split(";");
+                            for (String fileInfo : files) {
+                                if (fileInfo.trim().isEmpty()) {
+                                    continue;
                                 }
-                            } else {
-                                logger.log(Level.WARNING, "Định dạng file không đúng: " + fileInfo);
+                                String[] parts = fileInfo.split("\\|", -1);
+                                if (parts.length == 6) {
+                                    try {
+                                        long fileSize = Long.parseLong(parts[2]);
+                                        String formattedSize = formatSize(fileSize);
+                                        String sharerName = parts[5].isEmpty() ? "" : parts[5];
+                                        Object[] rowData = new Object[]{
+                                            parts[0], parts[1], formattedSize, parts[3], parts[4], sharerName
+                                        };
+                                        tableModel.addRow(rowData);
+                                    } catch (NumberFormatException e) {
+                                        logger.log(Level.WARNING, "Lỗi parse kích thước file: " + parts[2], e);
+                                    }
+                                } else {
+                                    logger.log(Level.WARNING, "Định dạng file không đúng: " + fileInfo);
+                                }
                             }
                         }
-                    } else {
-                        JOptionPane.showMessageDialog(frmMainClient.this, "Không thể tải danh sách file: " + response, "Lỗi", JOptionPane.ERROR_MESSAGE);
+                        // Cập nhật giao diện phân trang
+                        updatePaginationControls();
+
+                    } else { // Xử lý lỗi
+                        JOptionPane.showMessageDialog(frmMainClient.this, "Không thể tải danh sách file: " + pagedResponse.responseCode, "Lỗi", JOptionPane.ERROR_MESSAGE);
+                        lblPageInfo.setText("Error");
+                        totalFilePages = 0; // Reset
+                        currentFilePage = 1;
+                        updatePaginationControls(); // Vô hiệu hóa nút
                     }
                 } catch (Exception ex) {
                     logger.log(Level.SEVERE, "Lỗi khi tải danh sách file", ex);
                     JOptionPane.showMessageDialog(frmMainClient.this, "Lỗi nghiêm trọng khi tải file: " + ex.getMessage(), "Lỗi", JOptionPane.ERROR_MESSAGE);
+                    lblPageInfo.setText("Error");
+                    totalFilePages = 0;
+                    currentFilePage = 1;
+                    updatePaginationControls();
                 }
             }
         }.execute();
+    }
+
+    /**
+     * Cập nhật trạng thái của các nút phân trang và label hiển thị trang.
+     */
+    private void updatePaginationControls() {
+        if (totalFilePages <= 0) { // Trường hợp không có dữ liệu hoặc lỗi
+            lblPageInfo.setText("Page 0 / 0");
+            btnPrevPage.setEnabled(false);
+            btnNextPage.setEnabled(false);
+        } else {
+            lblPageInfo.setText("Page " + currentFilePage + " / " + totalFilePages);
+            btnPrevPage.setEnabled(currentFilePage > 1); // Bật nếu không phải trang đầu
+            btnNextPage.setEnabled(currentFilePage < totalFilePages); // Bật nếu không phải trang cuối
+        }
+        // Có thể thêm code để cập nhật cmbSortBy ở đây nếu cần
     }
 
     // LOGIC XỬ LÝ CHỨC NĂNG  
@@ -796,21 +848,19 @@ public class frmMainClient extends javax.swing.JFrame {
      * Làm mới (tải lại) danh sách file cho thư mục đang được chọn trên cây.
      */
     public void refreshCurrentFolderView() {
-        // Lấy node đang được chọn
         DefaultMutableTreeNode selectedNode = (DefaultMutableTreeNode) folderTree.getLastSelectedPathComponent();
-        int folderIdToRefresh = -1; // Mặc định là gốc
+        int folderIdToRefresh = -1;
 
         if (selectedNode != null && selectedNode.getUserObject() instanceof FolderNode) {
             FolderNode selectedFolder = (FolderNode) selectedNode.getUserObject();
             folderIdToRefresh = selectedFolder.getId();
         } else {
-            // Nếu không có gì chọn, đảm bảo node gốc được chọn lại
             if (rootNode != null) {
                 folderTree.setSelectionPath(new TreePath(rootNode.getPath()));
+                folderIdToRefresh = -1; // Đảm bảo là gốc
             }
         }
 
-        // Gọi hàm tải file cho thư mục đó
         loadFilesForFolder(folderIdToRefresh);
     }
 
@@ -845,6 +895,10 @@ public class frmMainClient extends javax.swing.JFrame {
         jScrollPane1 = new javax.swing.JScrollPane();
         fileTable = new javax.swing.JTable();
         btnNewFolder = new javax.swing.JButton();
+        btnPrevPage = new javax.swing.JButton();
+        lblPageInfo = new javax.swing.JLabel();
+        btnNextPage = new javax.swing.JButton();
+        cmbSortBy = new javax.swing.JComboBox<>();
 
         setDefaultCloseOperation(javax.swing.WindowConstants.EXIT_ON_CLOSE);
         setTitle("Quản lý File - File Storage Client");
@@ -914,15 +968,55 @@ public class frmMainClient extends javax.swing.JFrame {
             }
         });
 
+        btnPrevPage.setText("Previous");
+        btnPrevPage.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                btnPrevPageActionPerformed(evt);
+            }
+        });
+
+        lblPageInfo.setText("Page 1 / ?");
+
+        btnNextPage.setText("Next");
+        btnNextPage.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                btnNextPageActionPerformed(evt);
+            }
+        });
+
+        cmbSortBy.setModel(new javax.swing.DefaultComboBoxModel<>(new String[] { "Name (A-Z)", "Date (Newest)", "Size (Largest)" }));
+        cmbSortBy.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                cmbSortByActionPerformed(evt);
+            }
+        });
+
         javax.swing.GroupLayout layout = new javax.swing.GroupLayout(getContentPane());
         getContentPane().setLayout(layout);
         layout.setHorizontalGroup(
             layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
             .addGroup(layout.createSequentialGroup()
                 .addGap(43, 43, 43)
-                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                    .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, layout.createSequentialGroup()
-                        .addGap(0, 283, Short.MAX_VALUE)
+                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
+                    .addComponent(jSplitPane2, javax.swing.GroupLayout.DEFAULT_SIZE, 822, Short.MAX_VALUE)
+                    .addGroup(layout.createSequentialGroup()
+                        .addGap(0, 0, Short.MAX_VALUE)
+                        .addComponent(cmbSortBy, javax.swing.GroupLayout.PREFERRED_SIZE, 121, javax.swing.GroupLayout.PREFERRED_SIZE)
+                        .addGap(82, 82, 82)
+                        .addComponent(lblWelcome)
+                        .addGap(39, 39, 39)
+                        .addComponent(btnLogout)))
+                .addGap(34, 34, 34))
+            .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, layout.createSequentialGroup()
+                .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
+                    .addGroup(layout.createSequentialGroup()
+                        .addComponent(btnPrevPage)
+                        .addGap(29, 29, 29)
+                        .addComponent(lblPageInfo, javax.swing.GroupLayout.PREFERRED_SIZE, 77, javax.swing.GroupLayout.PREFERRED_SIZE)
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                        .addComponent(btnNextPage))
+                    .addGroup(layout.createSequentialGroup()
                         .addComponent(btnNewFolder)
                         .addGap(37, 37, 37)
                         .addComponent(btnUpload)
@@ -931,16 +1025,8 @@ public class frmMainClient extends javax.swing.JFrame {
                         .addGap(18, 18, 18)
                         .addComponent(btnShare)
                         .addGap(45, 45, 45)
-                        .addComponent(btnDelete)
-                        .addGap(65, 65, 65))
-                    .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, layout.createSequentialGroup()
-                        .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
-                            .addComponent(jSplitPane2)
-                            .addGroup(layout.createSequentialGroup()
-                                .addComponent(lblWelcome)
-                                .addGap(39, 39, 39)
-                                .addComponent(btnLogout)))
-                        .addGap(34, 34, 34))))
+                        .addComponent(btnDelete)))
+                .addGap(61, 61, 61))
         );
         layout.setVerticalGroup(
             layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
@@ -948,17 +1034,23 @@ public class frmMainClient extends javax.swing.JFrame {
                 .addGap(8, 8, 8)
                 .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
                     .addComponent(lblWelcome)
-                    .addComponent(btnLogout))
+                    .addComponent(btnLogout)
+                    .addComponent(cmbSortBy, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
                 .addGap(20, 20, 20)
                 .addComponent(jSplitPane2, javax.swing.GroupLayout.PREFERRED_SIZE, 366, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 39, Short.MAX_VALUE)
+                .addGap(18, 18, 18)
                 .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
                     .addComponent(btnUpload)
                     .addComponent(btnDownload)
                     .addComponent(btnDelete)
                     .addComponent(btnShare)
                     .addComponent(btnNewFolder))
-                .addGap(45, 45, 45))
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
+                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                    .addComponent(btnPrevPage)
+                    .addComponent(lblPageInfo)
+                    .addComponent(btnNextPage))
+                .addContainerGap(31, Short.MAX_VALUE))
         );
 
         pack();
@@ -988,18 +1080,52 @@ public class frmMainClient extends javax.swing.JFrame {
         handleNewFolder();
     }//GEN-LAST:event_btnNewFolderActionPerformed
 
+    private void btnPrevPageActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnPrevPageActionPerformed
+        if (currentFilePage > 1) {
+            currentFilePage--; // Giảm trang hiện tại
+            refreshCurrentFolderView(); // Tải lại dữ liệu trang mới
+        }
+    }//GEN-LAST:event_btnPrevPageActionPerformed
+
+    private void btnNextPageActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnNextPageActionPerformed
+        if (currentFilePage < totalFilePages) {
+            currentFilePage++; // Tăng trang hiện tại
+            refreshCurrentFolderView(); // Tải lại dữ liệu trang mới
+        }
+    }//GEN-LAST:event_btnNextPageActionPerformed
+
+    private void cmbSortByActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_cmbSortByActionPerformed
+        String selectedSort = (String) cmbSortBy.getSelectedItem();
+        String newSortBy = "name_asc"; // Mặc định
+        if ("Date (Newest)".equals(selectedSort)) {
+            newSortBy = "date_desc";
+        } else if ("Size (Largest)".equals(selectedSort)) {
+            newSortBy = "size_desc";
+        } // Thêm các trường hợp khác nếu cần (vd: Size (Smallest) -> "size_asc")
+
+        if (!newSortBy.equals(currentSortBy)) { // Chỉ tải lại nếu tiêu chí thay đổi
+            currentSortBy = newSortBy;
+            currentFilePage = 1; // Quay về trang đầu khi đổi sắp xếp
+            refreshCurrentFolderView();
+        }
+    }//GEN-LAST:event_cmbSortByActionPerformed
+
     // Variables declaration - do not modify//GEN-BEGIN:variables
     private javax.swing.JButton btnDelete;
     private javax.swing.JButton btnDownload;
     private javax.swing.JButton btnLogout;
     private javax.swing.JButton btnNewFolder;
+    private javax.swing.JButton btnNextPage;
+    private javax.swing.JButton btnPrevPage;
     private javax.swing.JButton btnShare;
     private javax.swing.JButton btnUpload;
+    private javax.swing.JComboBox<String> cmbSortBy;
     private javax.swing.JTable fileTable;
     private javax.swing.JTree folderTree;
     private javax.swing.JScrollPane folderTreeScrollPane;
     private javax.swing.JScrollPane jScrollPane1;
     private javax.swing.JSplitPane jSplitPane2;
+    private javax.swing.JLabel lblPageInfo;
     private javax.swing.JLabel lblWelcome;
     // End of variables declaration//GEN-END:variables
 }

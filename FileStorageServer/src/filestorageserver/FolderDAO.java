@@ -9,6 +9,7 @@ import java.sql.Statement;
 import java.sql.Types;
 import java.util.ArrayList;
 import java.util.List;
+import filestorageserver.model.PagedResult;
 
 /**
  * Lớp Data Access Object (DAO) cho các thao tác liên quan đến thư mục. Chịu
@@ -79,53 +80,7 @@ public class FolderDAO {
         }
         return generatedFolderId;
     }
-
-    /**
-     * Lấy danh sách các thư mục con trực tiếp của một thư mục cha.
-     *
-     * @param ownerId ID người sở hữu.
-     * @param parentFolderId ID của thư mục cha (null = lấy thư mục gốc).
-     * @return List các đối tượng Folder.
-     */
-    public List<Folder> getFoldersByParent(int ownerId, Integer parentFolderId) {
-        List<Folder> folders = new ArrayList<>();
-        String sql;
-
-        if (parentFolderId == null) {
-            sql = "SELECT * FROM folders WHERE owner_id = ? AND parent_folder_id IS NULL ORDER BY folder_name";
-        } else {
-            sql = "SELECT * FROM folders WHERE owner_id = ? AND parent_folder_id = ? ORDER BY folder_name";
-        }
-
-        try (Connection con = getConnection(); PreparedStatement ps = con.prepareStatement(sql)) {
-
-            if (con == null) {
-                return null;
-            }
-
-            ps.setInt(1, ownerId);
-            if (parentFolderId != null) {
-                ps.setInt(2, parentFolderId);
-            }
-
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    Folder folder = new Folder();
-                    folder.setFolderId(rs.getInt("folder_id"));
-                    folder.setFolderName(rs.getString("folder_name"));
-                    folder.setOwnerId(rs.getInt("owner_id"));
-                    folder.setParentFolderId((Integer) rs.getObject("parent_folder_id"));
-                    folder.setCreatedAt(rs.getTimestamp("created_at"));
-                    folders.add(folder);
-                }
-            }
-        } catch (SQLException ex) {
-            System.err.println("Lỗi CSDL khi lấy danh sách thư mục: " + ex.getMessage());
-            return null;
-        }
-        return folders;
-    }
-
+    
     /**
      * Di chuyển một thư mục vào một thư mục cha mới.
      *
@@ -227,27 +182,29 @@ public class FolderDAO {
                 return false;
             }
 
-            // --- THÊM KIỂM TRA TRÙNG TÊN ---
             // Lấy parentFolderId của thư mục đang đổi tên để kiểm tra đúng chỗ
             Integer parentFolderId = getParentFolderId(folderId, ownerId, con);
-            if (parentFolderId == null && folderId > 0) { // Kiểm tra xem thư mục có tồn tại không
-                System.err.println("Đổi tên thất bại: Không tìm thấy thư mục ID " + folderId + " hoặc không có quyền.");
-                return false;
-            }
+//            if (parentFolderId == null && folderId > 0) { // Kiểm tra xem thư mục có tồn tại không
+//                System.err.println("Đổi tên thất bại: Không tìm thấy thư mục ID " + folderId + " hoặc không có quyền.");
+//                return false;
+//            }
 
             // Kiểm tra tên mới có trùng với thư mục khác TRONG CÙNG thư mục cha không?
             if (folderNameExists(newFolderName, ownerId, parentFolderId, con, folderId)) { // Loại trừ chính nó
                 System.err.println("Đổi tên thất bại: Tên '" + newFolderName + "' đã tồn tại trong thư mục cha.");
                 return false; // Trả về false nếu tên trùng
             }
-            // --- KẾT THÚC KIỂM TRA ---
 
             try (PreparedStatement ps = con.prepareStatement(sql)) {
                 ps.setString(1, newFolderName);
                 ps.setInt(2, folderId);
                 ps.setInt(3, ownerId);
                 success = ps.executeUpdate() > 0;
-            } // PreparedStatement được tự động đóng
+                // Thêm log nếu update thất bại (có thể do folderId sai hoặc ownerId sai)
+                if (!success) {
+                    System.err.println("Đổi tên thất bại: Không thể cập nhật CSDL (Thư mục ID " + folderId + " không tồn tại hoặc không có quyền?).");
+                }
+            }
         } catch (SQLException ex) {
             System.err.println("Lỗi CSDL khi đổi tên thư mục: " + ex.getMessage());
             success = false;
@@ -255,6 +212,113 @@ public class FolderDAO {
             closeConnection(con); // Đóng kết nối
         }
         return success;
+    }
+
+    /**
+     * Lấy danh sách thư mục con theo trang và sắp xếp.
+     *
+     * @param ownerId ID chủ sở hữu.
+     * @param parentFolderId ID thư mục cha (null = gốc).
+     * @param pageNumber Trang hiện tại (bắt đầu từ 1).
+     * @param pageSize Số thư mục mỗi trang.
+     * @param sortBy Chuỗi sắp xếp (ví dụ: "name_asc", "date_desc"). Mặc định là
+     * "name_asc".
+     * @return PagedResult chứa danh sách thư mục và thông tin phân trang, hoặc
+     * null nếu lỗi.
+     */
+    public PagedResult<Folder> getFoldersByParent(int ownerId, Integer parentFolderId, int pageNumber, int pageSize, String sortBy) {
+        List<Folder> folders = new ArrayList<>();
+        long totalFolders = 0;
+        String baseSql = "FROM folders WHERE owner_id = ?";
+        String countSql = "SELECT COUNT(*) " + baseSql;
+        String selectSql = "SELECT * " + baseSql;
+
+        // Xử lý điều kiện thư mục cha
+        if (parentFolderId == null) {
+            countSql += " AND parent_folder_id IS NULL";
+            selectSql += " AND parent_folder_id IS NULL";
+        } else {
+            countSql += " AND parent_folder_id = ?";
+            selectSql += " AND parent_folder_id = ?";
+        }
+
+        // Xử lý sắp xếp (AN TOÀN - chỉ cho phép các cột cụ thể)
+        String orderByClause = " ORDER BY ";
+        if ("date_desc".equalsIgnoreCase(sortBy)) {
+            orderByClause += "created_at DESC";
+        } else { // Mặc định hoặc "name_asc"
+            orderByClause += "folder_name ASC";
+        }
+        selectSql += orderByClause;
+
+        // Xử lý phân trang
+        if (pageSize > 0 && pageNumber > 0) {
+            int offset = (pageNumber - 1) * pageSize;
+            selectSql += " LIMIT ? OFFSET ?";
+        }
+
+        Connection con = null;
+        try {
+            con = getConnection();
+            if (con == null) {
+                return null;
+            }
+
+            // 1. Đếm tổng số thư mục
+            try (PreparedStatement psCount = con.prepareStatement(countSql)) {
+                int paramIndex = 1;
+                psCount.setInt(paramIndex++, ownerId);
+                if (parentFolderId != null) {
+                    psCount.setInt(paramIndex++, parentFolderId);
+                }
+                try (ResultSet rsCount = psCount.executeQuery()) {
+                    if (rsCount.next()) {
+                        totalFolders = rsCount.getLong(1);
+                    }
+                }
+            }
+
+            // 2. Lấy danh sách thư mục cho trang hiện tại (chỉ thực hiện nếu có thư mục)
+            if (totalFolders > 0) {
+                try (PreparedStatement psSelect = con.prepareStatement(selectSql)) {
+                    int paramIndex = 1;
+                    psSelect.setInt(paramIndex++, ownerId);
+                    if (parentFolderId != null) {
+                        psSelect.setInt(paramIndex++, parentFolderId);
+                    }
+                    if (pageSize > 0 && pageNumber > 0) {
+                        psSelect.setInt(paramIndex++, pageSize);
+                        psSelect.setInt(paramIndex++, (pageNumber - 1) * pageSize);
+                    }
+
+                    try (ResultSet rs = psSelect.executeQuery()) {
+                        while (rs.next()) {
+                            Folder folder = mapRowToFolder(rs); // Tạo hàm helper mapRowToFolder
+                            folders.add(folder);
+                        }
+                    }
+                }
+            }
+            // 3. Trả về kết quả phân trang
+            return new PagedResult<>(folders, totalFolders, pageNumber, pageSize);
+
+        } catch (SQLException ex) {
+            System.err.println("Lỗi CSDL khi lấy danh sách thư mục (phân trang): " + ex.getMessage());
+            return null;
+        } finally {
+            closeConnection(con);
+        }
+    }
+
+    // Hàm helper mới để map ResultSet sang Folder
+    private Folder mapRowToFolder(ResultSet rs) throws SQLException {
+        Folder folder = new Folder();
+        folder.setFolderId(rs.getInt("folder_id"));
+        folder.setFolderName(rs.getString("folder_name"));
+        folder.setOwnerId(rs.getInt("owner_id"));
+        folder.setParentFolderId((Integer) rs.getObject("parent_folder_id"));
+        folder.setCreatedAt(rs.getTimestamp("created_at"));
+        return folder;
     }
 
     /**

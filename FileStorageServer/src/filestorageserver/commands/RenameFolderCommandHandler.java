@@ -12,44 +12,57 @@ public class RenameFolderCommandHandler implements CommandHandler {
     @Override
     public void handle(ClientSession session, DataInputStream dis, DataOutputStream dos, ServerActivityListener listener) throws IOException {
         if (!session.isLoggedIn()) {
-            dos.writeUTF("ERROR_NOT_LOGGED_IN"); return;
+            dos.writeUTF("ERROR_NOT_LOGGED_IN");
+            dos.flush();
+            return;
         }
-        String oldFolderName = null; // Biến để lưu tên cũ
+        String oldFolderName = null;
+        int folderId = -1;
         try {
-            int folderId = dis.readInt();
+            folderId = dis.readInt();
             String newFolderName = dis.readUTF();
 
             if (newFolderName == null || newFolderName.trim().isEmpty()) {
-                dos.writeUTF("RENAME_FOLDER_FAIL_EMPTY_NAME"); return;
+                dos.writeUTF("RENAME_FOLDER_FAIL_EMPTY_NAME");
+                return;
             }
 
             FolderDAO folderDAO = new FolderDAO();
-            
-            // Lấy tên cũ TRƯỚC KHI đổi tên
+
+            // Lấy tên cũ TRƯỚC KHI đổi tên để kiểm tra tồn tại và ghi log
             oldFolderName = folderDAO.getFolderNameById(folderId, session.getCurrentUserId());
-            
+
             boolean success = false;
-            // Chỉ thực hiện đổi tên nếu lấy được tên cũ (tức là thư mục tồn tại và có quyền)
-            if (oldFolderName != null) {
-                 success = folderDAO.renameFolder(folderId, newFolderName.trim(), session.getCurrentUserId());
+            if (oldFolderName != null) { // Chỉ đổi tên nếu thư mục tồn tại và có quyền
+                success = folderDAO.renameFolder(folderId, newFolderName.trim(), session.getCurrentUserId());
             }
 
             if (success) {
                 dos.writeUTF("RENAME_FOLDER_SUCCESS");
-                listener.onFolderRenamed(session.getCurrentUsername(), oldFolderName, newFolderName.trim()); 
+                listener.onFolderRenamed(session.getCurrentUsername(), oldFolderName, newFolderName.trim());
             } else {
-                // Kiểm tra xem lỗi có phải do không tìm thấy thư mục/không có quyền không
-                if (oldFolderName == null && folderId > 0) { // folderId > 0 để tránh trường hợp gốc (-1)
+                // Phân biệt lỗi
+                if (oldFolderName == null && folderId > 0) { // Lỗi do không tìm thấy/không có quyền ngay từ đầu
                     dos.writeUTF("RENAME_FOLDER_FAIL_NOT_FOUND_OR_AUTH");
-                } else {
-                    // Lỗi khác (tên trùng hoặc lỗi DB)
-                    dos.writeUTF("RENAME_FOLDER_FAIL"); 
+                } else { // Lỗi khác (tên trùng hoặc lỗi DB khi UPDATE)
+                    dos.writeUTF("RENAME_FOLDER_FAIL_DB_OR_NAME_EXIST");
                 }
             }
+        } catch (IOException streamEx) {
+            System.err.println("Lỗi đọc stream rename folder từ client: " + streamEx.getMessage());
+            throw streamEx;
         } catch (Exception e) {
-            dos.writeUTF("RENAME_FOLDER_FAIL_INTERNAL_ERROR");
+            System.err.println("Lỗi không xác định khi đổi tên thư mục (ID: " + folderId + "): " + e.getMessage());
+            e.printStackTrace();
+            try {
+                dos.writeUTF("RENAME_FOLDER_FAIL_INTERNAL_ERROR");
+            } catch (IOException ignored) {
+            }
         } finally {
-            dos.flush();
+            try {
+                dos.flush();
+            } catch (IOException ignored) {
+            }
         }
     }
 }
